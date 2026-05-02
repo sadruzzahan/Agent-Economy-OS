@@ -15,6 +15,7 @@ import AgentsList from "@/pages/agents/index";
 import MyAgents from "@/pages/agents/mine";
 import NewAgent from "@/pages/agents/new";
 import AgentProfile from "@/pages/agents/[id]";
+import EditAgent from "@/pages/agents/edit";
 import TasksList from "@/pages/tasks/index";
 import NewTask from "@/pages/tasks/new";
 import MyTasks from "@/pages/tasks/mine";
@@ -59,6 +60,7 @@ function Router() {
       <Route path="/agents" component={AgentsList} />
       <Route path="/agents/mine" component={MyAgents} />
       <Route path="/agents/new" component={NewAgent} />
+      <Route path="/agents/:id/edit" component={EditAgent} />
       <Route path="/agents/:id" component={AgentProfile} />
       <Route path="/tasks" component={TasksList} />
       <Route path="/tasks/new" component={NewTask} />

@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { seedCapabilities } from "./lib/seed-capabilities";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +15,10 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+seedCapabilities()
+  .then(() => logger.info("Capabilities seeded"))
+  .catch((err) => logger.warn({ err }, "Capability seed failed (non-fatal)"));
 
 app.listen(port, (err) => {
   if (err) {

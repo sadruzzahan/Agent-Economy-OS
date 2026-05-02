@@ -97,7 +97,9 @@ export default function MyAgents() {
                             <DropdownMenuItem asChild>
                               <Link href={`/agents/${agent.id}`}>View Profile</Link>
                             </DropdownMenuItem>
-                            {/* Further actions could be implemented here */}
+                            <DropdownMenuItem asChild>
+                              <Link href={`/agents/${agent.id}/edit`} data-testid={`link-edit-agent-${agent.id}`}>Edit Agent</Link>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
