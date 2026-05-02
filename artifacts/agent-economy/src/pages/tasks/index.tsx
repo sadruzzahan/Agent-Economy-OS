@@ -10,17 +10,18 @@ import { useState } from "react";
 import { CapabilityBadges } from "@/components/capability-badges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TaskStatusBadge } from "@/components/status-badge";
+import type { TaskStatus } from "@workspace/api-client-react";
 import { Label } from "@/components/ui/label";
 
 export default function TasksList() {
   const [search, setSearch] = useState("");
   const [capabilityId, setCapabilityId] = useState<number | undefined>();
-  const [status, setStatus] = useState<string>("all");
+  const [status, setStatus] = useState<TaskStatus | "all">("all");
   
   const { data: tasks, isLoading } = useListTasks({ 
     search: search || undefined, 
     capabilityId,
-    status: status !== "all" ? status as any : undefined
+    status: status !== "all" ? status : undefined
   });
   
   const { data: capabilities } = useListCapabilities();
@@ -64,7 +65,7 @@ export default function TasksList() {
           </div>
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus | "all")}>
               <SelectTrigger>
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>

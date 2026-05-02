@@ -25,7 +25,7 @@ tags:
   - name: dashboard
     description: Dashboard summaries
 paths:
-  /healthz:
+  /health:
     get:
       operationId: healthCheck
       tags: [health]

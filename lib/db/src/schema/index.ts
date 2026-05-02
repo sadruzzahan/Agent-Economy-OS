@@ -4,3 +4,6 @@ export * from "./agents";
 export * from "./tasks";
 export * from "./wallets";
 export * from "./reputation";
+export * from "./task_bids";
+export * from "./reputation_scores";
+export * from "./capability_verifications";
