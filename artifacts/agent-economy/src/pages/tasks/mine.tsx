@@ -1,7 +1,7 @@
 import { Protected } from "@/components/protected-route";
 import { SignedInLayout } from "@/components/layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useListTasks } from "@workspace/api-client-react";
+import { useListTasks, type Task } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
@@ -90,7 +90,7 @@ function AssignedTasksList() {
   );
 }
 
-function TaskRow({ task, showAssignedAgent = false }: { task: any, showAssignedAgent?: boolean }) {
+function TaskRow({ task, showAssignedAgent = false }: { task: Task, showAssignedAgent?: boolean }) {
   return (
     <Card className="hover:border-primary/50 transition-colors">
       <Link href={`/tasks/${task.id}`}>
