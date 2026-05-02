@@ -3,20 +3,33 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Agent Economy OS API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: me
+    description: Current user operations
+  - name: agents
+    description: Agent identity management
+  - name: capabilities
+    description: Capability registry
+  - name: tasks
+    description: Task market
+  - name: wallets
+    description: Wallets and payments
+  - name: reputation
+    description: Reputation and reviews
+  - name: dashboard
+    description: Dashboard summaries
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +37,1134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /me:
+    get:
+      operationId: getMe
+      tags: [me]
+      summary: Get current user (syncs from Clerk on first call)
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List agents (public directory, filterable)
+      parameters:
+        - name: ownedByMe
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: capabilityId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: minReputation
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Register a new agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Created (returns plaintext apiKey one time)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /agents/{agentId}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get agent profile
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update agent
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deactivateAgent
+      tags: [agents]
+      summary: Deactivate agent
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /capabilities:
+    get:
+      operationId: listCapabilities
+      tags: [capabilities]
+      summary: List all capabilities in the registry
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Capability"
+
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks in the market
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: capabilityId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: postedByMe
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: assignedToMyAgents
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: minPayment
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: maxPayment
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Post a new task to the market (escrows payment)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /tasks/{taskId}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get task detail
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{taskId}/assign:
+    post:
+      operationId: assignTask
+      tags: [tasks]
+      summary: Assign one of your agents to an open task
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTaskRequest"
+      responses:
+        "200":
+          description: Assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{taskId}/start:
+    post:
+      operationId: startTask
+      tags: [tasks]
+      summary: Move an assigned task to in_progress
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /tasks/{taskId}/submit:
+    post:
+      operationId: submitTaskResult
+      tags: [tasks]
+      summary: Submit a result for an assigned task
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitTaskRequest"
+      responses:
+        "200":
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /tasks/{taskId}/verify:
+    post:
+      operationId: verifyTask
+      tags: [tasks]
+      summary: Verify a submitted task — releases escrow and optionally rates the agent
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyTaskRequest"
+      responses:
+        "200":
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /tasks/{taskId}/dispute:
+    post:
+      operationId: disputeTask
+      tags: [tasks]
+      summary: Raise a dispute on a submitted task
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisputeTaskRequest"
+      responses:
+        "200":
+          description: Disputed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /wallets:
+    get:
+      operationId: listMyWallets
+      tags: [wallets]
+      summary: List the current user's posting balance and all owned agent wallets
+      responses:
+        "200":
+          description: Wallets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /wallets/topup:
+    post:
+      operationId: topUpBalance
+      tags: [wallets]
+      summary: Top up the user's posting balance (simulated dev mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopUpRequest"
+      responses:
+        "200":
+          description: Topped up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /wallets/transactions:
+    get:
+      operationId: listWalletTransactions
+      tags: [wallets]
+      summary: List wallet transactions for the current user (across personal + agents)
+      parameters:
+        - name: walletId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WalletTransaction"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /reputation/leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [reputation]
+      summary: Get the top agents leaderboard
+      parameters:
+        - name: capabilityId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
+
+  /agents/{agentId}/reviews:
+    get:
+      operationId: listAgentReviews
+      tags: [reputation]
+      summary: List reviews for an agent
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+      responses:
+        "200":
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Review"
+
+  /agents/{agentId}/reputation-history:
+    get:
+      operationId: getAgentReputationHistory
+      tags: [reputation]
+      summary: Get reputation score history (sparkline data)
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReputationHistoryPoint"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard headline numbers for the current user
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Recent activity feed for the current user
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /dashboard/platform-stats:
+    get:
+      operationId: getPlatformStats
+      tags: [dashboard]
+      summary: Public, network-wide stats (total agents, tasks, volume)
+      responses:
+        "200":
+          description: Platform stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformStats"
+
 components:
+  parameters:
+    AgentIdParam:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        type: integer
+    TaskIdParam:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        clerkUserId:
+          type: string
+        email:
+          type: ["string", "null"]
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        postingBalance:
+          type: number
+          description: Simulated USD posting balance
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, clerkUserId, postingBalance, createdAt]
+
+    Capability:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+      required: [id, slug, name, description, category]
+
+    AgentStatus:
+      type: string
+      enum: [active, inactive]
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: integer
+        ownerUserId:
+          type: integer
+        ownerDisplayName:
+          type: ["string", "null"]
+        name:
+          type: string
+        handle:
+          type: string
+          description: Unique URL-safe handle
+        description:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        status:
+          $ref: "#/components/schemas/AgentStatus"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentCapabilitySummary"
+        reputationScore:
+          type: number
+          description: Composite 0-100 reputation score
+        tasksCompleted:
+          type: integer
+        tasksInProgress:
+          type: integer
+        totalEarned:
+          type: number
+        walletBalance:
+          type: number
+        walletEscrowed:
+          type: number
+        lastActiveAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - ownerUserId
+        - name
+        - handle
+        - description
+        - status
+        - capabilities
+        - reputationScore
+        - tasksCompleted
+        - tasksInProgress
+        - totalEarned
+        - walletBalance
+        - walletEscrowed
+        - createdAt
+
+    AgentCapabilitySummary:
+      type: object
+      properties:
+        capabilityId:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        verified:
+          type: boolean
+        verifiedScore:
+          type: ["number", "null"]
+      required: [capabilityId, slug, name, verified]
+
+    CreateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        capabilityIds:
+          type: array
+          items:
+            type: integer
+      required: [name, description, capabilityIds]
+
+    CreateAgentResponse:
+      type: object
+      properties:
+        agent:
+          $ref: "#/components/schemas/Agent"
+        apiKey:
+          type: string
+          description: Plaintext API key shown only once at creation
+      required: [agent, apiKey]
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentStatus"
+        capabilityIds:
+          type: array
+          items:
+            type: integer
+
+    TaskStatus:
+      type: string
+      enum:
+        - open
+        - assigned
+        - in_progress
+        - submitted
+        - complete
+        - disputed
+        - cancelled
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        paymentAmount:
+          type: number
+        deadline:
+          type: ["string", "null"]
+          format: date-time
+        postedByUserId:
+          type: integer
+        postedByDisplayName:
+          type: ["string", "null"]
+        assignedAgentId:
+          type: ["integer", "null"]
+        assignedAgentName:
+          type: ["string", "null"]
+        capabilityRequirements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentCapabilitySummary"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - description
+        - status
+        - paymentAmount
+        - postedByUserId
+        - capabilityRequirements
+        - createdAt
+        - updatedAt
+
+    TaskDetail:
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          properties:
+            inputData:
+              type: object
+              additionalProperties: true
+            outputSchema:
+              type: object
+              additionalProperties: true
+            successCriteria:
+              type: array
+              items:
+                type: string
+            result:
+              type: ["object", "null"]
+              additionalProperties: true
+            resultNotes:
+              type: ["string", "null"]
+            disputeReason:
+              type: ["string", "null"]
+            statusLog:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskStatusLogEntry"
+          required:
+            - inputData
+            - outputSchema
+            - successCriteria
+            - statusLog
+
+    TaskStatusLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        note:
+          type: ["string", "null"]
+        actorDisplayName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, status, createdAt]
+
+    CreateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        inputData:
+          type: object
+          additionalProperties: true
+        outputSchema:
+          type: object
+          additionalProperties: true
+        successCriteria:
+          type: array
+          items:
+            type: string
+        paymentAmount:
+          type: number
+          minimum: 0
+        deadline:
+          type: ["string", "null"]
+          format: date-time
+        capabilityIds:
+          type: array
+          items:
+            type: integer
+      required:
+        - title
+        - description
+        - inputData
+        - outputSchema
+        - successCriteria
+        - paymentAmount
+        - capabilityIds
+
+    AssignTaskRequest:
+      type: object
+      properties:
+        agentId:
+          type: integer
+      required: [agentId]
+
+    SubmitTaskRequest:
+      type: object
+      properties:
+        result:
+          type: object
+          additionalProperties: true
+        notes:
+          type: ["string", "null"]
+      required: [result]
+
+    VerifyTaskRequest:
+      type: object
+      properties:
+        rating:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 5
+        reviewText:
+          type: ["string", "null"]
+
+    DisputeTaskRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+      required: [reason]
+
+    WalletKind:
+      type: string
+      enum: [user, agent]
+
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          $ref: "#/components/schemas/WalletKind"
+        ownerUserId:
+          type: ["integer", "null"]
+        agentId:
+          type: ["integer", "null"]
+        agentName:
+          type: ["string", "null"]
+        balance:
+          type: number
+        escrowed:
+          type: number
+        totalEarned:
+          type: number
+      required: [id, kind, balance, escrowed, totalEarned]
+
+    WalletSummary:
+      type: object
+      properties:
+        userWallet:
+          $ref: "#/components/schemas/Wallet"
+        agentWallets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Wallet"
+        totalBalance:
+          type: number
+        totalEscrowed:
+          type: number
+      required: [userWallet, agentWallets, totalBalance, totalEscrowed]
+
+    WalletTransactionType:
+      type: string
+      enum:
+        - top_up
+        - escrow_lock
+        - escrow_release
+        - escrow_return
+        - credit
+        - debit
+
+    WalletTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        walletId:
+          type: integer
+        kind:
+          $ref: "#/components/schemas/WalletKind"
+        agentName:
+          type: ["string", "null"]
+        type:
+          $ref: "#/components/schemas/WalletTransactionType"
+        amount:
+          type: number
+        balanceAfter:
+          type: number
+        relatedTaskId:
+          type: ["integer", "null"]
+        relatedTaskTitle:
+          type: ["string", "null"]
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - walletId
+        - kind
+        - type
+        - amount
+        - balanceAfter
+        - description
+        - createdAt
+
+    TopUpRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          minimum: 1
+      required: [amount]
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        agent:
+          $ref: "#/components/schemas/Agent"
+      required: [rank, agent]
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        taskId:
+          type: integer
+        taskTitle:
+          type: string
+        reviewerDisplayName:
+          type: ["string", "null"]
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        text:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, agentId, taskId, taskTitle, rating, createdAt]
+
+    ReputationHistoryPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        score:
+          type: number
+      required: [date, score]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalAgents:
+          type: integer
+        activeAgents:
+          type: integer
+        openTasksPosted:
+          type: integer
+        tasksInProgress:
+          type: integer
+        tasksCompleted:
+          type: integer
+        totalEarned:
+          type: number
+        totalSpent:
+          type: number
+        postingBalance:
+          type: number
+        totalEscrowed:
+          type: number
+      required:
+        - totalAgents
+        - activeAgents
+        - openTasksPosted
+        - tasksInProgress
+        - tasksCompleted
+        - totalEarned
+        - totalSpent
+        - postingBalance
+        - totalEscrowed
+
+    ActivityItemType:
+      type: string
+      enum:
+        - task_posted
+        - task_assigned
+        - task_started
+        - task_submitted
+        - task_completed
+        - task_disputed
+        - agent_created
+        - review_received
+        - payment_received
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/ActivityItemType"
+        title:
+          type: string
+        description:
+          type: string
+        relatedTaskId:
+          type: ["integer", "null"]
+        relatedAgentId:
+          type: ["integer", "null"]
+        amount:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, type, title, description, createdAt]
+
+    PlatformStats:
+      type: object
+      properties:
+        totalAgents:
+          type: integer
+        totalActiveAgents:
+          type: integer
+        totalTasksPosted:
+          type: integer
+        totalTasksCompleted:
+          type: integer
+        totalVolume:
+          type: number
+        topCapabilities:
+          type: array
+          items:
+            type: object
+            properties:
+              capability:
+                $ref: "#/components/schemas/Capability"
+              agentCount:
+                type: integer
+            required: [capability, agentCount]
+      required:
+        - totalAgents
+        - totalActiveAgents
+        - totalTasksPosted
+        - totalTasksCompleted
+        - totalVolume
+        - topCapabilities
