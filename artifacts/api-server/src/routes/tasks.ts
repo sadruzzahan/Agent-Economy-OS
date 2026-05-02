@@ -329,16 +329,18 @@ router.post(
       res.status(401).json({ error: "Not your agent" });
       return;
     }
-    await db
-      .update(tasksTable)
-      .set({ status: "assigned", assignedAgentId: agent.id })
-      .where(eq(tasksTable.id, task.id));
-    await db.insert(taskStatusLogTable).values({
-      taskId: task.id,
-      status: "assigned",
-      actorAgentId: agent.id,
-      actorUserId: me.id,
-      note: `Assigned to ${agent.name}`,
+    await db.transaction(async (tx) => {
+      await tx
+        .update(tasksTable)
+        .set({ status: "assigned", assignedAgentId: agent.id })
+        .where(eq(tasksTable.id, task.id));
+      await tx.insert(taskStatusLogTable).values({
+        taskId: task.id,
+        status: "assigned",
+        actorAgentId: agent.id,
+        actorUserId: me.id,
+        note: `Assigned to ${agent.name}`,
+      });
     });
     const [updated] = await db
       .select()
@@ -479,86 +481,86 @@ router.post(
       return;
     }
     const payment = n(task.paymentAmount);
+    const assignedAgentId = task.assignedAgentId;
 
-    // Release escrow from poster's wallet
-    const [userWallet] = await db
-      .select()
-      .from(walletsTable)
-      .where(eq(walletsTable.ownerUserId, me.id));
-    if (userWallet) {
-      const newEscrow = Math.max(0, n(userWallet.escrowed) - payment);
-      await db
-        .update(walletsTable)
-        .set({ escrowed: String(newEscrow) })
-        .where(eq(walletsTable.id, userWallet.id));
-      await db.insert(walletTransactionsTable).values({
-        walletId: userWallet.id,
-        type: "escrow_release",
-        amount: String(payment),
-        balanceAfter: String(n(userWallet.balance)),
-        relatedTaskId: task.id,
-        description: `Released escrow for task: ${task.title}`,
-      });
-    }
+    await db.transaction(async (tx) => {
+      const [userWallet] = await tx
+        .select()
+        .from(walletsTable)
+        .where(eq(walletsTable.ownerUserId, me.id));
+      if (userWallet) {
+        const newEscrow = Math.max(0, n(userWallet.escrowed) - payment);
+        await tx
+          .update(walletsTable)
+          .set({ escrowed: String(newEscrow) })
+          .where(eq(walletsTable.id, userWallet.id));
+        await tx.insert(walletTransactionsTable).values({
+          walletId: userWallet.id,
+          type: "escrow_release",
+          amount: String(payment),
+          balanceAfter: String(n(userWallet.balance)),
+          relatedTaskId: task.id,
+          description: `Released escrow for task: ${task.title}`,
+        });
+      }
 
-    // Credit agent wallet
-    const [agentWallet] = await db
-      .select()
-      .from(walletsTable)
-      .where(eq(walletsTable.agentId, task.assignedAgentId));
-    if (agentWallet) {
-      const newBalance = n(agentWallet.balance) + payment;
-      const newEarned = n(agentWallet.totalEarned) + payment;
-      await db
-        .update(walletsTable)
-        .set({
-          balance: String(newBalance),
-          totalEarned: String(newEarned),
-        })
-        .where(eq(walletsTable.id, agentWallet.id));
-      await db.insert(walletTransactionsTable).values({
-        walletId: agentWallet.id,
-        type: "credit",
-        amount: String(payment),
-        balanceAfter: String(newBalance),
-        relatedTaskId: task.id,
-        description: `Payment received for task: ${task.title}`,
-      });
-    }
+      const [agentWallet] = await tx
+        .select()
+        .from(walletsTable)
+        .where(eq(walletsTable.agentId, assignedAgentId));
+      if (agentWallet) {
+        const newBalance = n(agentWallet.balance) + payment;
+        const newEarned = n(agentWallet.totalEarned) + payment;
+        await tx
+          .update(walletsTable)
+          .set({
+            balance: String(newBalance),
+            totalEarned: String(newEarned),
+          })
+          .where(eq(walletsTable.id, agentWallet.id));
+        await tx.insert(walletTransactionsTable).values({
+          walletId: agentWallet.id,
+          type: "credit",
+          amount: String(payment),
+          balanceAfter: String(newBalance),
+          relatedTaskId: task.id,
+          description: `Payment received for task: ${task.title}`,
+        });
+      }
 
-    await db
-      .update(tasksTable)
-      .set({ status: "complete" })
-      .where(eq(tasksTable.id, task.id));
-    await db.insert(taskStatusLogTable).values({
-      taskId: task.id,
-      status: "complete",
-      actorUserId: me.id,
-      note: "Task verified and payment released",
-    });
-
-    if (body.data.rating != null) {
-      await db.insert(reviewsTable).values({
-        agentId: task.assignedAgentId,
+      await tx
+        .update(tasksTable)
+        .set({ status: "complete" })
+        .where(eq(tasksTable.id, task.id));
+      await tx.insert(taskStatusLogTable).values({
         taskId: task.id,
-        reviewerUserId: me.id,
-        rating: body.data.rating,
-        text: body.data.reviewText ?? null,
+        status: "complete",
+        actorUserId: me.id,
+        note: "Task verified and payment released",
       });
 
-      // Recalculate reputation score (avg rating * 20)
-      const [agg] = await db
-        .select({
-          avgRating: sql<number>`coalesce(avg(${reviewsTable.rating}), 0)::float`,
-        })
-        .from(reviewsTable)
-        .where(eq(reviewsTable.agentId, task.assignedAgentId));
-      const newScore = Math.min(100, (agg?.avgRating ?? 0) * 20);
-      await db
-        .update(agentsTable)
-        .set({ reputationScore: String(newScore) })
-        .where(eq(agentsTable.id, task.assignedAgentId));
-    }
+      if (body.data.rating != null) {
+        await tx.insert(reviewsTable).values({
+          agentId: assignedAgentId,
+          taskId: task.id,
+          reviewerUserId: me.id,
+          rating: body.data.rating,
+          text: body.data.reviewText ?? null,
+        });
+
+        const [agg] = await tx
+          .select({
+            avgRating: sql<number>`coalesce(avg(${reviewsTable.rating}), 0)::float`,
+          })
+          .from(reviewsTable)
+          .where(eq(reviewsTable.agentId, assignedAgentId));
+        const newScore = Math.min(100, (agg?.avgRating ?? 0) * 20);
+        await tx
+          .update(agentsTable)
+          .set({ reputationScore: String(newScore) })
+          .where(eq(agentsTable.id, assignedAgentId));
+      }
+    });
 
     const [updated] = await db
       .select()

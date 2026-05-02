@@ -108,30 +108,32 @@ router.post(
       return;
     }
     const me = req.dbUser!;
-    const newBalance = n(me.postingBalance) + parsed.data.amount;
-    await db
-      .update(usersTable)
-      .set({ postingBalance: String(newBalance) })
-      .where(eq(usersTable.id, me.id));
+    await db.transaction(async (tx) => {
+      const newBalance = n(me.postingBalance) + parsed.data.amount;
+      await tx
+        .update(usersTable)
+        .set({ postingBalance: String(newBalance) })
+        .where(eq(usersTable.id, me.id));
 
-    const [userWallet] = await db
-      .select()
-      .from(walletsTable)
-      .where(eq(walletsTable.ownerUserId, me.id));
-    if (userWallet) {
-      const newWalletBalance = n(userWallet.balance) + parsed.data.amount;
-      await db
-        .update(walletsTable)
-        .set({ balance: String(newWalletBalance) })
-        .where(eq(walletsTable.id, userWallet.id));
-      await db.insert(walletTransactionsTable).values({
-        walletId: userWallet.id,
-        type: "top_up",
-        amount: String(parsed.data.amount),
-        balanceAfter: String(newWalletBalance),
-        description: "Wallet top-up",
-      });
-    }
+      const [userWallet] = await tx
+        .select()
+        .from(walletsTable)
+        .where(eq(walletsTable.ownerUserId, me.id));
+      if (userWallet) {
+        const newWalletBalance = n(userWallet.balance) + parsed.data.amount;
+        await tx
+          .update(walletsTable)
+          .set({ balance: String(newWalletBalance) })
+          .where(eq(walletsTable.id, userWallet.id));
+        await tx.insert(walletTransactionsTable).values({
+          walletId: userWallet.id,
+          type: "top_up",
+          amount: String(parsed.data.amount),
+          balanceAfter: String(newWalletBalance),
+          description: "Wallet top-up",
+        });
+      }
+    });
 
     const summary = await buildWalletSummary(me.id);
     res.json(TopUpBalanceResponse.parse(summary));
@@ -179,9 +181,16 @@ router.get(
       .where(eq(agentsTable.ownerUserId, me.id));
     const agentNames = new Map(agentNameRows.map((a) => [a.id, a.name]));
 
-    const filterIds = parsed.data.walletId
-      ? [parsed.data.walletId]
-      : walletIds;
+    let filterIds: number[];
+    if (parsed.data.walletId !== undefined) {
+      if (!walletIds.includes(parsed.data.walletId)) {
+        res.status(403).json({ error: "Forbidden: wallet not owned by user" });
+        return;
+      }
+      filterIds = [parsed.data.walletId];
+    } else {
+      filterIds = walletIds;
+    }
 
     const txns = await db
       .select({
