@@ -75,6 +75,7 @@ export default function EditAgent() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetAgentQueryKey(agentId) });
           queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey({ ownedByMe: true }) });
           toast({ title: "Agent updated", description: "Changes saved successfully." });
           setLocation(`/agents/${agentId}`);
         },
