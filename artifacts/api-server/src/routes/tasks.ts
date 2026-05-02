@@ -215,65 +215,67 @@ router.post("/tasks", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  // Lock funds: deduct from postingBalance into a user-wallet escrow analog
-  await db
-    .update(usersTable)
-    .set({ postingBalance: String(n(me.postingBalance) - paymentAmount) })
-    .where(eq(usersTable.id, me.id));
+  const task = await db.transaction(async (tx) => {
+    await tx
+      .update(usersTable)
+      .set({ postingBalance: String(n(me.postingBalance) - paymentAmount) })
+      .where(eq(usersTable.id, me.id));
 
-  const [userWallet] = await db
-    .select()
-    .from(walletsTable)
-    .where(eq(walletsTable.ownerUserId, me.id));
-  if (userWallet) {
-    const newEscrow = n(userWallet.escrowed) + paymentAmount;
-    await db
-      .update(walletsTable)
-      .set({ escrowed: String(newEscrow) })
-      .where(eq(walletsTable.id, userWallet.id));
-    await db.insert(walletTransactionsTable).values({
-      walletId: userWallet.id,
-      type: "escrow_lock",
-      amount: String(paymentAmount),
-      balanceAfter: String(n(userWallet.balance)),
-      description: `Escrow for task: ${title}`,
+    const [userWallet] = await tx
+      .select()
+      .from(walletsTable)
+      .where(eq(walletsTable.ownerUserId, me.id));
+    if (userWallet) {
+      const newEscrow = n(userWallet.escrowed) + paymentAmount;
+      await tx
+        .update(walletsTable)
+        .set({ escrowed: String(newEscrow) })
+        .where(eq(walletsTable.id, userWallet.id));
+      await tx.insert(walletTransactionsTable).values({
+        walletId: userWallet.id,
+        type: "escrow_lock",
+        amount: String(paymentAmount),
+        balanceAfter: String(n(userWallet.balance)),
+        description: `Escrow for task: ${title}`,
+      });
+    }
+
+    const [createdTask] = await tx
+      .insert(tasksTable)
+      .values({
+        postedByUserId: me.id,
+        title,
+        description,
+        inputData,
+        outputSchema,
+        successCriteria,
+        paymentAmount: String(paymentAmount),
+        deadline: deadline ? new Date(deadline) : null,
+      })
+      .returning();
+    if (!createdTask) {
+      throw new Error("Failed to create task");
+    }
+
+    if (capabilityIds.length > 0) {
+      await tx
+        .insert(taskCapabilitiesTable)
+        .values(
+          capabilityIds.map((capabilityId) => ({
+            taskId: createdTask.id,
+            capabilityId,
+          })),
+        );
+    }
+
+    await tx.insert(taskStatusLogTable).values({
+      taskId: createdTask.id,
+      status: "open",
+      actorUserId: me.id,
+      note: "Task posted to market",
     });
-  }
 
-  const [task] = await db
-    .insert(tasksTable)
-    .values({
-      postedByUserId: me.id,
-      title,
-      description,
-      inputData,
-      outputSchema,
-      successCriteria,
-      paymentAmount: String(paymentAmount),
-      deadline: deadline ? new Date(deadline) : null,
-    })
-    .returning();
-  if (!task) {
-    res.status(500).json({ error: "Failed to create task" });
-    return;
-  }
-
-  if (capabilityIds.length > 0) {
-    await db
-      .insert(taskCapabilitiesTable)
-      .values(
-        capabilityIds.map((capabilityId) => ({
-          taskId: task.id,
-          capabilityId,
-        })),
-      );
-  }
-
-  await db.insert(taskStatusLogTable).values({
-    taskId: task.id,
-    status: "open",
-    actorUserId: me.id,
-    note: "Task posted to market",
+    return createdTask;
   });
 
   const dto = await buildTaskSummary(task);
