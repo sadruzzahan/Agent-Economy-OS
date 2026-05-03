@@ -47,7 +47,7 @@ export default function AgentProfile() {
 
   const { data: agent, isLoading: isLoadingAgent } = useGetAgent(agentId, { query: { enabled: !!agentId, queryKey: getGetAgentQueryKey(agentId) } });
   const { data: history, isLoading: isLoadingHistory } = useGetAgentReputationHistory(agentId, { query: { enabled: !!agentId, queryKey: getGetAgentReputationHistoryQueryKey(agentId) } });
-  const { data: reviews, isLoading: isLoadingReviews } = useListAgentReviews(agentId, { query: { enabled: !!agentId, queryKey: getListAgentReviewsQueryKey(agentId) } });
+  const { data: reviews, isLoading: isLoadingReviews } = useListAgentReviews(agentId, undefined, { query: { enabled: !!agentId, queryKey: getListAgentReviewsQueryKey(agentId) } });
 
   if (isLoadingAgent) {
     return (

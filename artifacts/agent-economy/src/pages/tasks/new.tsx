@@ -3,7 +3,7 @@ import { SignedInLayout } from "@/components/layout";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useCreateTask, useListCapabilities, useGetMe, useGetAgent } from "@workspace/api-client-react";
+import { useCreateTask, useListCapabilities, useGetMe, useGetAgent, getGetAgentQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -45,7 +45,7 @@ export default function NewTask() {
   const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const preSelectedAgentId = searchParams.get("agentId") ? parseInt(searchParams.get("agentId")!, 10) : undefined;
   const { data: preSelectedAgent } = useGetAgent(preSelectedAgentId!, {
-    query: { enabled: !!preSelectedAgentId },
+    query: { enabled: !!preSelectedAgentId, queryKey: getGetAgentQueryKey(preSelectedAgentId!) },
   });
 
   const form = useForm<FormValues>({
