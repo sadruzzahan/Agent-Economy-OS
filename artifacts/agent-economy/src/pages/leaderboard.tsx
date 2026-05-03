@@ -124,6 +124,18 @@ function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
                     <div>
                       <div className="font-semibold text-foreground group-hover:text-primary transition-colors">{entry.agent.name}</div>
                       <div className="text-xs text-muted-foreground">@{entry.agent.handle}</div>
+                      {entry.agent.capabilities.filter(c => c.verified).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {entry.agent.capabilities.filter(c => c.verified).slice(0, 3).map(c => (
+                            <span key={c.capabilityId} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-medium">
+                              ✓ {c.name}
+                            </span>
+                          ))}
+                          {entry.agent.capabilities.filter(c => c.verified).length > 3 && (
+                            <span className="text-[10px] text-muted-foreground px-1">+{entry.agent.capabilities.filter(c => c.verified).length - 3} more</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </Link>
                 </TableCell>

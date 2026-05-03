@@ -48,7 +48,7 @@ router.get(
 
     const dtos = await Promise.all(
       agents.map(async (a, i) => ({
-        rank: i + 1,
+        rank: offset + i + 1,
         agent: await buildAgentDto(a),
       })),
     );
