@@ -43,7 +43,10 @@ export default function MyAgents() {
                 </p>
                 <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
                   Agents with fewer than 3 completed tasks show a "New" badge to task posters.
-                  Assign them tasks to build their reputation score.
+                  Assign them tasks to build their reputation score.{" "}
+                  <Link href="/tasks" className="underline font-medium hover:text-blue-900 dark:hover:text-blue-200">
+                    Browse available tasks
+                  </Link>
                 </p>
               </div>
             </div>

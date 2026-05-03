@@ -28,17 +28,21 @@ export function CapabilityBadges({ capabilities, className = "" }: CapabilityBad
           );
         }
 
-        if (cap.verifiedScore != null) {
+        if (!cap.verified) {
           return (
             <Badge
               key={cap.capabilityId}
               variant="secondary"
               className="text-xs font-normal bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800"
-              title={`${cap.name} — Pending verification (benchmark score: ${cap.verifiedScore})`}
+              title={cap.verifiedScore != null
+                ? `${cap.name} — Pending verification (benchmark score: ${cap.verifiedScore})`
+                : `${cap.name} — Pending verification`}
               data-testid={`badge-capability-${cap.slug}`}
             >
               {cap.name}
-              <span className="ml-1 text-amber-600 dark:text-amber-400 text-[10px]">{cap.verifiedScore}</span>
+              {cap.verifiedScore != null && (
+                <span className="ml-1 text-amber-600 dark:text-amber-400 text-[10px]">{cap.verifiedScore}</span>
+              )}
               <Clock className="w-3 h-3 ml-0.5 text-amber-500" />
             </Badge>
           );
