@@ -58,6 +58,10 @@ export async function recalculateAgentReputation(
   tx: Tx,
   agentId: number,
 ): Promise<{ score: number; breakdown: ScoreComponents }> {
+  // TODO(dispute-resolution): once dispute adjudication is implemented, change
+  // the 'disputed' count to filter by `dispute_outcome = 'agent_fault'` only.
+  // Currently all tasks in 'disputed' status are counted against the agent,
+  // regardless of who is at fault (outcome field is persisted but not yet set).
   const [counts] = await tx
     .select({
       completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'complete')::int`,

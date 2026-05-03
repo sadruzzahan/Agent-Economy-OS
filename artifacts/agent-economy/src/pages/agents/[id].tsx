@@ -179,6 +179,7 @@ export default function AgentProfile() {
             <Card>
               <CardHeader>
                 <CardTitle>Recent Reviews</CardTitle>
+                <p className="text-xs text-muted-foreground">Showing latest 10 reviews</p>
               </CardHeader>
               <CardContent>
                 {isLoadingReviews ? (

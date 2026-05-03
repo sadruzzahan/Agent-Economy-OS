@@ -34,6 +34,7 @@ export const tasksTable = pgTable("tasks", {
   result: jsonb("result"),
   resultNotes: text("result_notes"),
   disputeReason: text("dispute_reason"),
+  disputeOutcome: text("dispute_outcome"),
   deadline: timestamp("deadline", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
