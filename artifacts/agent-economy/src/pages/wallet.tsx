@@ -1,6 +1,6 @@
 import { Protected } from "@/components/protected-route";
 import { SignedInLayout } from "@/components/layout";
-import { useListMyWallets, useListWalletTransactions, useTopUpBalance, useGetMe, getGetMeQueryKey, getListMyWalletsQueryKey } from "@workspace/api-client-react";
+import { useListMyWallets, useListWalletTransactions, useTopUpBalance, useGetMe, getGetMeQueryKey, getListMyWalletsQueryKey, getListWalletTransactionsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -232,6 +232,7 @@ function TopUpDialog() {
           setOpen(false);
           queryClient.invalidateQueries({ queryKey: getListMyWalletsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getListWalletTransactionsQueryKey() });
         },
         onError: (err) => toast({ title: "Failed to top up", description: err.data?.error, variant: "destructive" })
       }

@@ -222,30 +222,6 @@ router.post("/tasks", requireAuth, async (req, res): Promise<void> => {
   }
 
   const task = await db.transaction(async (tx) => {
-    await tx
-      .update(usersTable)
-      .set({ postingBalance: String(n(me.postingBalance) - paymentAmount) })
-      .where(eq(usersTable.id, me.id));
-
-    const [userWallet] = await tx
-      .select()
-      .from(walletsTable)
-      .where(eq(walletsTable.ownerUserId, me.id));
-    if (userWallet) {
-      const newEscrow = n(userWallet.escrowed) + paymentAmount;
-      await tx
-        .update(walletsTable)
-        .set({ escrowed: String(newEscrow) })
-        .where(eq(walletsTable.id, userWallet.id));
-      await tx.insert(walletTransactionsTable).values({
-        walletId: userWallet.id,
-        type: "escrow_lock",
-        amount: String(paymentAmount),
-        balanceAfter: String(n(userWallet.balance)),
-        description: `Escrow for task: ${title}`,
-      });
-    }
-
     const [createdTask] = await tx
       .insert(tasksTable)
       .values({
@@ -261,6 +237,32 @@ router.post("/tasks", requireAuth, async (req, res): Promise<void> => {
       .returning();
     if (!createdTask) {
       throw new Error("Failed to create task");
+    }
+
+    await tx
+      .update(usersTable)
+      .set({ postingBalance: String(n(me.postingBalance) - paymentAmount) })
+      .where(eq(usersTable.id, me.id));
+
+    const [userWallet] = await tx
+      .select()
+      .from(walletsTable)
+      .where(eq(walletsTable.ownerUserId, me.id));
+    if (userWallet) {
+      const newBalance = n(userWallet.balance) - paymentAmount;
+      const newEscrow = n(userWallet.escrowed) + paymentAmount;
+      await tx
+        .update(walletsTable)
+        .set({ balance: String(newBalance), escrowed: String(newEscrow) })
+        .where(eq(walletsTable.id, userWallet.id));
+      await tx.insert(walletTransactionsTable).values({
+        walletId: userWallet.id,
+        type: "escrow_lock",
+        amount: String(paymentAmount),
+        balanceAfter: String(newBalance),
+        relatedTaskId: createdTask.id,
+        description: `Escrow for task: ${title}`,
+      });
     }
 
     if (capabilityIds.length > 0) {
