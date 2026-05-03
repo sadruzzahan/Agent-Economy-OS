@@ -13,7 +13,7 @@ import {
   reputationHistoryTable,
 } from "@workspace/db";
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
-import { recalculateAgentReputation } from "../lib/reputation";
+import { recalculateAgentReputation, computeReputationScore } from "../lib/reputation";
 import { getAuth } from "@clerk/express";
 import {
   CreateAgentBody,
@@ -105,29 +105,14 @@ async function buildAgentDto(agentRow: {
     .from(reviewsTable)
     .where(eq(reviewsTable.agentId, agentRow.id));
 
-  const completed = counts?.completed ?? 0;
-  const disputed = counts?.disputed ?? 0;
-  const totalAssigned = counts?.totalAssigned ?? 0;
+  const taskCounts = {
+    completed: counts?.completed ?? 0,
+    disputed: counts?.disputed ?? 0,
+    totalAssigned: counts?.totalAssigned ?? 0,
+  };
   const avgRating = ratingAgg?.avgRating ?? 0;
 
-  const completionRateComponent =
-    totalAssigned === 0 && avgRating === 0
-      ? 0
-      : (completed / Math.max(1, totalAssigned)) * 40;
-  const avgRatingComponent =
-    totalAssigned === 0 && avgRating === 0 ? 0 : (avgRating / 5) * 35;
-  const nonDisputeRateComponent =
-    totalAssigned === 0 && avgRating === 0
-      ? 0
-      : (1 - disputed / Math.max(1, totalAssigned)) * 15;
-  const volumeBonusComponent = Math.min(10, completed);
-
-  const scoreBreakdown = {
-    completionRate: Math.round(completionRateComponent * 10) / 10,
-    avgRating: Math.round(avgRatingComponent * 10) / 10,
-    nonDisputeRate: Math.round(nonDisputeRateComponent * 10) / 10,
-    volumeBonus: Math.round(volumeBonusComponent * 10) / 10,
-  };
+  const { breakdown: scoreBreakdown } = computeReputationScore(taskCounts, avgRating);
 
   return {
     id: agentRow.id,
@@ -147,9 +132,9 @@ async function buildAgentDto(agentRow: {
         c.verifiedScore == null ? null : Number(c.verifiedScore),
     })),
     reputationScore: Number(agentRow.reputationScore),
-    tasksCompleted: completed,
+    tasksCompleted: taskCounts.completed,
     tasksInProgress: counts?.inProgress ?? 0,
-    disputeCount: disputed,
+    disputeCount: taskCounts.disputed,
     scoreBreakdown,
     totalEarned: wallet ? n(wallet.totalEarned) : 0,
     walletBalance: wallet ? n(wallet.balance) : 0,

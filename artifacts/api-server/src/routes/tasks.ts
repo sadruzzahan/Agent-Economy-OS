@@ -332,12 +332,16 @@ router.post(
       res.status(400).json({ error: "Task is not open" });
       return;
     }
+    if (task.postedByUserId !== me.id) {
+      res.status(401).json({ error: "Only the task poster can assign an agent" });
+      return;
+    }
     const [agent] = await db
       .select()
       .from(agentsTable)
       .where(eq(agentsTable.id, body.data.agentId));
-    if (!agent || agent.ownerUserId !== me.id) {
-      res.status(401).json({ error: "Not your agent" });
+    if (!agent || agent.status !== "active") {
+      res.status(400).json({ error: "Agent not found or not active" });
       return;
     }
     await db.transaction(async (tx) => {
