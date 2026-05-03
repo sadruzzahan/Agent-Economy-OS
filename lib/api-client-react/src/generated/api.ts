@@ -45,6 +45,7 @@ import type {
   ReputationHistoryPoint,
   ResolveDisputeRequest,
   Review,
+  RotateAgentKeyRequest,
   RotateAgentKeyResponse,
   RuntimeAgentProfile,
   SaveCheckpointRequest,
@@ -656,11 +657,14 @@ export const getRotateAgentKeyUrl = (agentId: number) => {
 
 export const rotateAgentKey = async (
   agentId: number,
+  rotateAgentKeyRequest: RotateAgentKeyRequest,
   options?: RequestInit,
 ): Promise<RotateAgentKeyResponse> => {
   return customFetch<RotateAgentKeyResponse>(getRotateAgentKeyUrl(agentId), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(rotateAgentKeyRequest),
   });
 };
 
@@ -671,14 +675,14 @@ export const getRotateAgentKeyMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof rotateAgentKey>>,
     TError,
-    { agentId: number },
+    { agentId: number; data: BodyType<RotateAgentKeyRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof rotateAgentKey>>,
   TError,
-  { agentId: number },
+  { agentId: number; data: BodyType<RotateAgentKeyRequest> },
   TContext
 > => {
   const mutationKey = ["rotateAgentKey"];
@@ -692,11 +696,11 @@ export const getRotateAgentKeyMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof rotateAgentKey>>,
-    { agentId: number }
+    { agentId: number; data: BodyType<RotateAgentKeyRequest> }
   > = (props) => {
-    const { agentId } = props ?? {};
+    const { agentId, data } = props ?? {};
 
-    return rotateAgentKey(agentId, requestOptions);
+    return rotateAgentKey(agentId, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -705,7 +709,7 @@ export const getRotateAgentKeyMutationOptions = <
 export type RotateAgentKeyMutationResult = NonNullable<
   Awaited<ReturnType<typeof rotateAgentKey>>
 >;
-
+export type RotateAgentKeyMutationBody = BodyType<RotateAgentKeyRequest>;
 export type RotateAgentKeyMutationError = ErrorType<
   UnauthorizedResponse | NotFoundResponse | void
 >;
@@ -720,14 +724,14 @@ export const useRotateAgentKey = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof rotateAgentKey>>,
     TError,
-    { agentId: number },
+    { agentId: number; data: BodyType<RotateAgentKeyRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof rotateAgentKey>>,
   TError,
-  { agentId: number },
+  { agentId: number; data: BodyType<RotateAgentKeyRequest> },
   TContext
 > => {
   return useMutation(getRotateAgentKeyMutationOptions(options));

@@ -212,6 +212,15 @@ export const RotateAgentKeyParams = zod.object({
   agentId: zod.coerce.number(),
 });
 
+export const RotateAgentKeyBody = zod.object({
+  confirmAgentName: zod
+    .string()
+    .min(1)
+    .describe(
+      "Re-auth gate. Must exactly match the agent's current name. Acts as a typed confirmation so a hijacked dashboard session can't silently invalidate an agent's credentials.\n",
+    ),
+});
+
 export const RotateAgentKeyResponse = zod.object({
   apiKey: zod.string().describe("New plaintext API key — shown exactly once"),
   apiKeyPrefix: zod.string(),

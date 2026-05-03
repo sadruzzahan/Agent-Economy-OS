@@ -17,6 +17,10 @@ import { requireApiKeyAuth } from "../middlewares/apiKeyAuth";
 import { recalculateAgentReputation } from "../lib/reputation";
 import { n } from "../lib/serialize";
 import { z } from "zod";
+import { Errors } from "../lib/errors";
+import { audit } from "../lib/audit";
+import { runtimeMutationLimit } from "../middlewares/rateLimits";
+import { getClientIp } from "../lib/rate-limit";
 
 const router: IRouter = Router();
 
@@ -33,12 +37,6 @@ async function logActivity(
     .insert(agentActivityLogTable)
     .values({ agentId, method, endpoint, responseStatus: status, ipAddress: ip ?? null })
     .catch(() => {});
-}
-
-function clientIp(req: { ip?: string; headers: Record<string, string | string[] | undefined> }): string | undefined {
-  const xff = req.headers["x-forwarded-for"];
-  const raw = Array.isArray(xff) ? xff[0] : xff;
-  return raw?.split(",")[0]?.trim() || req.ip;
 }
 
 async function buildRuntimeTaskDto(t: typeof tasksTable.$inferSelect) {
@@ -103,7 +101,7 @@ router.get("/runtime/tasks/assigned", async (req, res): Promise<void> => {
     .orderBy(desc(tasksTable.createdAt));
 
   const dtos = await Promise.all(tasks.map(buildRuntimeTaskDto));
-  await logActivity(agent.id, "GET", ep, 200, clientIp(req));
+  await logActivity(agent.id, "GET", ep, 200, getClientIp(req));
   res.json(dtos);
 });
 
@@ -111,50 +109,62 @@ router.get("/runtime/tasks/assigned", async (req, res): Promise<void> => {
 
 const AcceptTaskParams = z.object({ taskId: z.coerce.number().int().positive() });
 
-router.post("/runtime/tasks/:taskId/accept", async (req, res): Promise<void> => {
-  const agent = req.apiKeyAgent!;
-  const ep = "POST /runtime/tasks/:taskId/accept";
-  const parsed = AcceptTaskParams.safeParse(req.params);
-  if (!parsed.success) {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: "Invalid task ID" });
-    return;
-  }
-  const { taskId } = parsed.data;
+router.post(
+  "/runtime/tasks/:taskId/accept",
+  runtimeMutationLimit,
+  async (req, res): Promise<void> => {
+    const agent = req.apiKeyAgent!;
+    const ep = "POST /runtime/tasks/:taskId/accept";
+    const ip = getClientIp(req);
+    const parsed = AcceptTaskParams.safeParse(req.params);
+    if (!parsed.success) {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest("Invalid task ID");
+    }
+    const { taskId } = parsed.data;
 
-  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
-  if (!task) {
-    await logActivity(agent.id, "POST", ep, 404, clientIp(req));
-    res.status(404).json({ error: "Task not found" });
-    return;
-  }
-  if (task.assignedAgentId !== agent.id) {
-    await logActivity(agent.id, "POST", ep, 403, clientIp(req));
-    res.status(403).json({ error: "Task is not assigned to your agent" });
-    return;
-  }
-  if (task.status !== "assigned") {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: `Task is in '${task.status}' state — only 'assigned' tasks can be accepted` });
-    return;
-  }
+    const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    if (!task) {
+      await logActivity(agent.id, "POST", ep, 404, ip);
+      throw Errors.notFound("Task not found");
+    }
+    if (task.assignedAgentId !== agent.id) {
+      await logActivity(agent.id, "POST", ep, 403, ip);
+      throw Errors.forbidden("Task is not assigned to your agent");
+    }
+    if (task.status !== "assigned") {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest(
+        `Task is in '${task.status}' state — only 'assigned' tasks can be accepted`,
+      );
+    }
 
-  await db.transaction(async (tx) => {
-    await tx.update(tasksTable).set({ status: "in_progress" }).where(eq(tasksTable.id, taskId));
-    await tx.insert(taskStatusLogTable).values({
-      taskId,
-      status: "in_progress",
-      actorAgentId: agent.id,
-      note: "Accepted by agent via runtime API",
+    await db.transaction(async (tx) => {
+      await tx.update(tasksTable).set({ status: "in_progress" }).where(eq(tasksTable.id, taskId));
+      await tx.insert(taskStatusLogTable).values({
+        taskId,
+        status: "in_progress",
+        actorAgentId: agent.id,
+        note: "Accepted by agent via runtime API",
+      });
+      await recalculateAgentReputation(tx, agent.id);
     });
-    await recalculateAgentReputation(tx, agent.id);
-  });
 
-  const [updated] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
-  const dto = await buildRuntimeTaskDto(updated!);
-  await logActivity(agent.id, "POST", ep, 200, clientIp(req));
-  res.json(dto);
-});
+    const [updated] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    const dto = await buildRuntimeTaskDto(updated!);
+    await logActivity(agent.id, "POST", ep, 200, ip);
+    await audit(req, {
+      action: "task.runtime_accept",
+      targetType: "task",
+      targetId: taskId,
+      actorUserId: null,
+      actorAgentId: agent.id,
+      before: { status: task.status },
+      after: { status: "in_progress" },
+    });
+    res.json(dto);
+  },
+);
 
 // ─── GET /runtime/tasks/:taskId/checkpoint ──────────────────────────────────
 
@@ -163,19 +173,18 @@ const CheckpointParams = z.object({ taskId: z.coerce.number().int().positive() }
 router.get("/runtime/tasks/:taskId/checkpoint", async (req, res): Promise<void> => {
   const agent = req.apiKeyAgent!;
   const ep = "GET /runtime/tasks/:taskId/checkpoint";
+  const ip = getClientIp(req);
   const parsed = CheckpointParams.safeParse(req.params);
   if (!parsed.success) {
-    await logActivity(agent.id, "GET", ep, 400, clientIp(req));
-    res.status(400).json({ error: "Invalid task ID" });
-    return;
+    await logActivity(agent.id, "GET", ep, 400, ip);
+    throw Errors.badRequest("Invalid task ID");
   }
   const { taskId } = parsed.data;
 
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
   if (!task || task.assignedAgentId !== agent.id) {
-    await logActivity(agent.id, "GET", ep, 404, clientIp(req));
-    res.status(404).json({ error: "Task not found or not assigned to your agent" });
-    return;
+    await logActivity(agent.id, "GET", ep, 404, ip);
+    throw Errors.notFound("Task not found or not assigned to your agent");
   }
 
   const [cp] = await db
@@ -185,7 +194,7 @@ router.get("/runtime/tasks/:taskId/checkpoint", async (req, res): Promise<void> 
     .orderBy(desc(taskCheckpointsTable.createdAt))
     .limit(1);
 
-  await logActivity(agent.id, "GET", ep, 200, clientIp(req));
+  await logActivity(agent.id, "GET", ep, 200, ip);
   if (!cp) {
     res.json(null);
     return;
@@ -208,51 +217,63 @@ const SaveCheckpointBody = z.object({
   note: z.string().max(500).optional(),
 });
 
-router.post("/runtime/tasks/:taskId/checkpoint", async (req, res): Promise<void> => {
-  const agent = req.apiKeyAgent!;
-  const ep = "POST /runtime/tasks/:taskId/checkpoint";
-  const params = CheckpointParams.safeParse(req.params);
-  const body = SaveCheckpointBody.safeParse(req.body);
-  if (!params.success || !body.success) {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: "Invalid request" });
-    return;
-  }
-  const { taskId } = params.data;
+router.post(
+  "/runtime/tasks/:taskId/checkpoint",
+  runtimeMutationLimit,
+  async (req, res): Promise<void> => {
+    const agent = req.apiKeyAgent!;
+    const ep = "POST /runtime/tasks/:taskId/checkpoint";
+    const ip = getClientIp(req);
+    const params = CheckpointParams.safeParse(req.params);
+    const body = SaveCheckpointBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest("Invalid request");
+    }
+    const { taskId } = params.data;
 
-  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
-  if (!task || task.assignedAgentId !== agent.id) {
-    await logActivity(agent.id, "POST", ep, 404, clientIp(req));
-    res.status(404).json({ error: "Task not found or not assigned to your agent" });
-    return;
-  }
-  if (!["in_progress", "assigned"].includes(task.status)) {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: `Cannot save checkpoint for task in '${task.status}' state` });
-    return;
-  }
+    const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    if (!task || task.assignedAgentId !== agent.id) {
+      await logActivity(agent.id, "POST", ep, 404, ip);
+      throw Errors.notFound("Task not found or not assigned to your agent");
+    }
+    if (!["in_progress", "assigned"].includes(task.status)) {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest(
+        `Cannot save checkpoint for task in '${task.status}' state`,
+      );
+    }
 
-  const [cp] = await db
-    .insert(taskCheckpointsTable)
-    .values({
-      taskId,
-      agentId: agent.id,
-      state: body.data.state,
-      note: body.data.note ?? null,
-    })
-    .returning();
+    const [cp] = await db
+      .insert(taskCheckpointsTable)
+      .values({
+        taskId,
+        agentId: agent.id,
+        state: body.data.state,
+        note: body.data.note ?? null,
+      })
+      .returning();
 
-  await logActivity(agent.id, "POST", ep, 201, clientIp(req));
-  res.status(201).json({
-    id: cp!.id,
-    taskId: cp!.taskId,
-    agentId: cp!.agentId,
-    state: cp!.state,
-    note: cp!.note ?? null,
-    createdAt: cp!.createdAt.toISOString(),
-    updatedAt: cp!.updatedAt.toISOString(),
-  });
-});
+    await logActivity(agent.id, "POST", ep, 201, ip);
+    await audit(req, {
+      action: "task.runtime_checkpoint",
+      targetType: "task",
+      targetId: taskId,
+      actorUserId: null,
+      actorAgentId: agent.id,
+      after: { checkpointId: cp!.id, hasNote: Boolean(body.data.note) },
+    });
+    res.status(201).json({
+      id: cp!.id,
+      taskId: cp!.taskId,
+      agentId: cp!.agentId,
+      state: cp!.state,
+      note: cp!.note ?? null,
+      createdAt: cp!.createdAt.toISOString(),
+      updatedAt: cp!.updatedAt.toISOString(),
+    });
+  },
+);
 
 // ─── POST /runtime/tasks/:taskId/submit ─────────────────────────────────────
 
@@ -261,49 +282,62 @@ const SubmitBody = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 
-router.post("/runtime/tasks/:taskId/submit", async (req, res): Promise<void> => {
-  const agent = req.apiKeyAgent!;
-  const ep = "POST /runtime/tasks/:taskId/submit";
-  const params = CheckpointParams.safeParse(req.params);
-  const body = SubmitBody.safeParse(req.body);
-  if (!params.success || !body.success) {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: "Invalid request" });
-    return;
-  }
-  const { taskId } = params.data;
+router.post(
+  "/runtime/tasks/:taskId/submit",
+  runtimeMutationLimit,
+  async (req, res): Promise<void> => {
+    const agent = req.apiKeyAgent!;
+    const ep = "POST /runtime/tasks/:taskId/submit";
+    const ip = getClientIp(req);
+    const params = CheckpointParams.safeParse(req.params);
+    const body = SubmitBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest("Invalid request");
+    }
+    const { taskId } = params.data;
 
-  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
-  if (!task || task.assignedAgentId !== agent.id) {
-    await logActivity(agent.id, "POST", ep, 404, clientIp(req));
-    res.status(404).json({ error: "Task not found or not assigned to your agent" });
-    return;
-  }
-  if (task.status !== "in_progress") {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: `Task is in '${task.status}' state — only in_progress tasks can be submitted` });
-    return;
-  }
+    const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    if (!task || task.assignedAgentId !== agent.id) {
+      await logActivity(agent.id, "POST", ep, 404, ip);
+      throw Errors.notFound("Task not found or not assigned to your agent");
+    }
+    if (task.status !== "in_progress") {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest(
+        `Task is in '${task.status}' state — only in_progress tasks can be submitted`,
+      );
+    }
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(tasksTable)
-      .set({ status: "submitted", result: body.data.result, resultNotes: body.data.notes ?? null })
-      .where(eq(tasksTable.id, taskId));
-    await tx.insert(taskStatusLogTable).values({
-      taskId,
-      status: "submitted",
-      actorAgentId: agent.id,
-      note: body.data.notes ?? "Result submitted via runtime API",
+    await db.transaction(async (tx) => {
+      await tx
+        .update(tasksTable)
+        .set({ status: "submitted", result: body.data.result, resultNotes: body.data.notes ?? null })
+        .where(eq(tasksTable.id, taskId));
+      await tx.insert(taskStatusLogTable).values({
+        taskId,
+        status: "submitted",
+        actorAgentId: agent.id,
+        note: body.data.notes ?? "Result submitted via runtime API",
+      });
+      await recalculateAgentReputation(tx, agent.id);
     });
-    await recalculateAgentReputation(tx, agent.id);
-  });
 
-  const [updated] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
-  const dto = await buildRuntimeTaskDto(updated!);
-  await logActivity(agent.id, "POST", ep, 200, clientIp(req));
-  res.json(dto);
-});
+    const [updated] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    const dto = await buildRuntimeTaskDto(updated!);
+    await logActivity(agent.id, "POST", ep, 200, ip);
+    await audit(req, {
+      action: "task.runtime_submit",
+      targetType: "task",
+      targetId: taskId,
+      actorUserId: null,
+      actorAgentId: agent.id,
+      before: { status: task.status },
+      after: { status: "submitted" },
+    });
+    res.json(dto);
+  },
+);
 
 // ─── POST /runtime/tasks (post a sub-task) ──────────────────────────────────
 
@@ -318,116 +352,125 @@ const RuntimeCreateTaskBody = z.object({
   deadline: z.string().datetime().optional().nullable(),
 });
 
-router.post("/runtime/tasks", async (req, res): Promise<void> => {
-  const agent = req.apiKeyAgent!;
-  const ep = "POST /runtime/tasks";
-  const body = RuntimeCreateTaskBody.safeParse(req.body);
-  if (!body.success) {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: body.error.message });
-    return;
-  }
-
-  // Spend limit: agent wallet must have sufficient balance
-  const [wallet] = await db
-    .select()
-    .from(walletsTable)
-    .where(eq(walletsTable.agentId, agent.id));
-
-  if (!wallet) {
-    await logActivity(agent.id, "POST", ep, 400, clientIp(req));
-    res.status(400).json({ error: "Agent has no wallet" });
-    return;
-  }
-
-  // We need a user owner for the task — fetch before the transaction
-  const [owner] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, agent.ownerUserId));
-
-  if (!owner) {
-    await logActivity(agent.id, "POST", ep, 500, clientIp(req));
-    res.status(500).json({ error: "Agent owner not found" });
-    return;
-  }
-
-  const amount = body.data.paymentAmount;
-
-  // Atomic guarded debit — uses a WHERE balance >= amount guard to prevent
-  // double-spend under concurrent requests (no optimistic locking needed).
-  const [task, spendErr] = await db.transaction(async (tx): Promise<[typeof tasksTable.$inferSelect | null, string | null]> => {
-    // Try to deduct atomically; if balance is insufficient the row won't update
-    const [debited] = await tx
-      .update(walletsTable)
-      .set({
-        balance: sql`${walletsTable.balance} - ${String(amount.toFixed(2))}::numeric`,
-        escrowed: sql`${walletsTable.escrowed} + ${String(amount.toFixed(2))}::numeric`,
-      })
-      .where(
-        and(
-          eq(walletsTable.id, wallet.id),
-          sql`${walletsTable.balance} >= ${String(amount.toFixed(2))}::numeric`,
-        ),
-      )
-      .returning({ id: walletsTable.id, balance: walletsTable.balance });
-
-    if (!debited) {
-      return [null, "insufficient_balance"];
+router.post(
+  "/runtime/tasks",
+  runtimeMutationLimit,
+  async (req, res): Promise<void> => {
+    const agent = req.apiKeyAgent!;
+    const ep = "POST /runtime/tasks";
+    const ip = getClientIp(req);
+    const body = RuntimeCreateTaskBody.safeParse(req.body);
+    if (!body.success) {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest(body.error.message);
     }
 
-    const [newTask] = await tx
-      .insert(tasksTable)
-      .values({
-        postedByUserId: owner.id,
-        title: body.data.title,
-        description: body.data.description,
-        paymentAmount: String(amount.toFixed(2)),
-        inputData: body.data.inputData,
-        outputSchema: body.data.outputSchema,
-        successCriteria: body.data.successCriteria,
-        status: "open",
-        deadline: body.data.deadline ? new Date(body.data.deadline) : null,
-      })
-      .returning();
+    const [wallet] = await db
+      .select()
+      .from(walletsTable)
+      .where(eq(walletsTable.agentId, agent.id));
 
-    await tx.insert(walletTransactionsTable).values({
-      walletId: wallet.id,
-      type: "escrow_lock",
-      amount: String(amount.toFixed(2)),
-      balanceAfter: String(debited.balance),
-      relatedTaskId: newTask!.id,
-      description: `Escrow locked for sub-task: ${body.data.title}`,
-    });
+    if (!wallet) {
+      await logActivity(agent.id, "POST", ep, 400, ip);
+      throw Errors.badRequest("Agent has no wallet");
+    }
 
-    if (body.data.capabilityIds.length > 0) {
-      await tx.insert(taskCapabilitiesTable).values(
-        body.data.capabilityIds.map((cid) => ({ taskId: newTask!.id, capabilityId: cid })),
+    const [owner] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, agent.ownerUserId));
+
+    if (!owner) {
+      await logActivity(agent.id, "POST", ep, 500, ip);
+      throw new Error("Agent owner not found");
+    }
+
+    const amount = body.data.paymentAmount;
+
+    const [task, spendErr] = await db.transaction(
+      async (tx): Promise<[typeof tasksTable.$inferSelect | null, string | null]> => {
+        const [debited] = await tx
+          .update(walletsTable)
+          .set({
+            balance: sql`${walletsTable.balance} - ${String(amount.toFixed(2))}::numeric`,
+            escrowed: sql`${walletsTable.escrowed} + ${String(amount.toFixed(2))}::numeric`,
+          })
+          .where(
+            and(
+              eq(walletsTable.id, wallet.id),
+              sql`${walletsTable.balance} >= ${String(amount.toFixed(2))}::numeric`,
+            ),
+          )
+          .returning({ id: walletsTable.id, balance: walletsTable.balance });
+
+        if (!debited) {
+          return [null, "insufficient_balance"];
+        }
+
+        const [newTask] = await tx
+          .insert(tasksTable)
+          .values({
+            postedByUserId: owner.id,
+            title: body.data.title,
+            description: body.data.description,
+            paymentAmount: String(amount.toFixed(2)),
+            inputData: body.data.inputData,
+            outputSchema: body.data.outputSchema,
+            successCriteria: body.data.successCriteria,
+            status: "open",
+            deadline: body.data.deadline ? new Date(body.data.deadline) : null,
+          })
+          .returning();
+
+        await tx.insert(walletTransactionsTable).values({
+          walletId: wallet.id,
+          type: "escrow_lock",
+          amount: String(amount.toFixed(2)),
+          balanceAfter: String(debited.balance),
+          relatedTaskId: newTask!.id,
+          description: `Escrow locked for sub-task: ${body.data.title}`,
+        });
+
+        if (body.data.capabilityIds.length > 0) {
+          await tx.insert(taskCapabilitiesTable).values(
+            body.data.capabilityIds.map((cid) => ({ taskId: newTask!.id, capabilityId: cid })),
+          );
+        }
+
+        await tx.insert(taskStatusLogTable).values({
+          taskId: newTask!.id,
+          status: "open",
+          actorAgentId: agent.id,
+          note: `Sub-task posted by agent ${agent.name} via runtime API`,
+        });
+
+        return [newTask!, null];
+      },
+    );
+
+    if (spendErr === "insufficient_balance") {
+      await logActivity(agent.id, "POST", ep, 402, ip);
+      // 402 Payment Required: surface via HttpError. Use badRequest with a
+      // clear message — distinct shape from generic 400 because the error
+      // text is the actionable bit.
+      throw Errors.badRequest(
+        `Insufficient agent wallet balance. Required: $${amount.toFixed(2)}`,
       );
     }
 
-    await tx.insert(taskStatusLogTable).values({
-      taskId: newTask!.id,
-      status: "open",
+    const dto = await buildRuntimeTaskDto(task!);
+    await logActivity(agent.id, "POST", ep, 201, ip);
+    await audit(req, {
+      action: "task.runtime_subtask_create",
+      targetType: "task",
+      targetId: task!.id,
+      actorUserId: null,
       actorAgentId: agent.id,
-      note: `Sub-task posted by agent ${agent.name} via runtime API`,
+      after: { paymentAmount: amount, title: body.data.title },
     });
-
-    return [newTask!, null];
-  });
-
-  if (spendErr === "insufficient_balance") {
-    await logActivity(agent.id, "POST", ep, 402, clientIp(req));
-    res.status(402).json({
-      error: `Insufficient agent wallet balance. Required: $${amount.toFixed(2)}`,
-    });
-    return;
-  }
-
-  const dto = await buildRuntimeTaskDto(task!);
-  await logActivity(agent.id, "POST", ep, 201, clientIp(req));
-  res.status(201).json(dto);
-});
+    res.status(201).json(dto);
+  },
+);
 
 // ─── GET /runtime/me ────────────────────────────────────────────────────────
 
@@ -450,7 +493,7 @@ router.get("/runtime/me", async (req, res): Promise<void> => {
     .from(tasksTable)
     .where(and(eq(tasksTable.assignedAgentId, agent.id), eq(tasksTable.status, "in_progress")));
 
-  await logActivity(agent.id, "GET", ep, 200, clientIp(req));
+  await logActivity(agent.id, "GET", ep, 200, getClientIp(req));
   res.json({
     id: agent.id,
     name: agent.name,

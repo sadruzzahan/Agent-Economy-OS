@@ -10,7 +10,8 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { audit } from "../lib/audit";
-import { walletLimit } from "../middlewares/rateLimits";
+import { walletLimit, userBaselineLimit } from "../middlewares/rateLimits";
+import { Errors } from "../lib/errors";
 import {
   ListMyWalletsResponse,
   ListWalletTransactionsQueryParams,
@@ -93,6 +94,7 @@ async function buildWalletSummary(userId: number) {
 router.get(
   "/wallets",
   requireAuth,
+  userBaselineLimit,
   async (req, res): Promise<void> => {
     const me = req.dbUser!;
     const summary = await buildWalletSummary(me.id);
@@ -106,10 +108,7 @@ router.post(
   walletLimit,
   async (req, res): Promise<void> => {
     const parsed = TopUpBalanceBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
-      return;
-    }
+    if (!parsed.success) throw Errors.badRequest(parsed.error.message);
     const me = req.dbUser!;
     await db.transaction(async (tx) => {
       await tx
@@ -152,12 +151,10 @@ router.post(
 router.get(
   "/wallets/transactions",
   requireAuth,
+  userBaselineLimit,
   async (req, res): Promise<void> => {
     const parsed = ListWalletTransactionsQueryParams.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
-      return;
-    }
+    if (!parsed.success) throw Errors.badRequest(parsed.error.message);
     const me = req.dbUser!;
     const myAgents = await db
       .select({ id: agentsTable.id })
@@ -193,8 +190,7 @@ router.get(
     let filterIds: number[];
     if (parsed.data.walletId !== undefined) {
       if (!walletIds.includes(parsed.data.walletId)) {
-        res.status(403).json({ error: "Forbidden: wallet not owned by user" });
-        return;
+        throw Errors.forbidden("Forbidden: wallet not owned by user");
       }
       filterIds = [parsed.data.walletId];
     } else {

@@ -106,6 +106,15 @@ export interface CreateAgentResponse {
   apiKey: string;
 }
 
+export interface RotateAgentKeyRequest {
+  /**
+   * Re-auth gate. Must exactly match the agent's current name. Acts as a typed confirmation so a hijacked dashboard session can't silently invalidate an agent's credentials.
+
+   * @minLength 1
+   */
+  confirmAgentName: string;
+}
+
 export interface RotateAgentKeyResponse {
   /** New plaintext API key — shown exactly once */
   apiKey: string;

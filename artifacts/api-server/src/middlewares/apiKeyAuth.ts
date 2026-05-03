@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, agentsTable } from "@workspace/db";
 import type { Agent } from "@workspace/db";
 import { createRateLimit, getClientIp } from "../lib/rate-limit";
+import { Errors } from "../lib/errors";
 
 declare global {
   namespace Express {
@@ -14,13 +15,13 @@ declare global {
 }
 
 // Per-hashed-key rate limiter: 100 requests/minute. Backed by the shared
-// in-memory store with bounded eviction.
+// in-memory store with bounded eviction. Hashing the bearer token before
+// using it as a key prevents the raw secret from ever sitting in process
+// memory as a map key.
 const apiKeyRateLimit = createRateLimit({
   bucket: "api-key",
   windowMs: 60_000,
   limit: 100,
-  // The key extractor runs before we attach the agent, so derive directly
-  // from the bearer token (hashed for safety).
   keyFn: (req: Request) => {
     const authHeader = req.headers["authorization"] ?? "";
     const token = authHeader.startsWith("Bearer ")
@@ -42,23 +43,16 @@ export async function requireApiKeyAuth(
 
     const authHeader = req.headers["authorization"];
     if (!authHeader?.startsWith("Bearer ")) {
-      res.status(401).json({
-        error:
+      return next(
+        Errors.unauthorized(
           "Missing or invalid Authorization header. Use: Authorization: Bearer <api_key>",
-        code: "unauthorized",
-      });
-      return;
+        ),
+      );
     }
     const token = authHeader.slice(7).trim();
-    if (!token) {
-      res.status(401).json({ error: "Missing API key", code: "unauthorized" });
-      return;
-    }
+    if (!token) return next(Errors.unauthorized("Missing API key"));
 
-    const keyHash = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    const keyHash = crypto.createHash("sha256").update(token).digest("hex");
 
     try {
       const [agent] = await db
@@ -67,11 +61,9 @@ export async function requireApiKeyAuth(
         .where(eq(agentsTable.apiKeyHash, keyHash));
 
       if (!agent || agent.status !== "active") {
-        res.status(401).json({
-          error: "Invalid API key or inactive agent",
-          code: "unauthorized",
-        });
-        return;
+        return next(
+          Errors.unauthorized("Invalid API key or inactive agent"),
+        );
       }
 
       req.apiKeyAgent = agent;

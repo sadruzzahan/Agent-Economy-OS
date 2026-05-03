@@ -170,6 +170,12 @@ paths:
       summary: Revoke and re-issue this agent's API key (owner only)
       parameters:
         - $ref: "#/components/parameters/AgentIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateAgentKeyRequest"
       responses:
         "200":
           description: New key issued (returned plaintext exactly once)
@@ -1045,6 +1051,18 @@ components:
           type: string
           description: Plaintext API key shown only once at creation
       required: [agent, apiKey]
+
+    RotateAgentKeyRequest:
+      type: object
+      properties:
+        confirmAgentName:
+          type: string
+          description: >
+            Re-auth gate. Must exactly match the agent's current name. Acts
+            as a typed confirmation so a hijacked dashboard session can't
+            silently invalidate an agent's credentials.
+          minLength: 1
+      required: [confirmAgentName]
 
     RotateAgentKeyResponse:
       type: object

@@ -14,6 +14,10 @@ export type AuditAction =
   | "task.verify"
   | "task.dispute"
   | "task.dispute_resolve"
+  | "task.runtime_accept"
+  | "task.runtime_checkpoint"
+  | "task.runtime_submit"
+  | "task.runtime_subtask_create"
   | "wallet.topup"
   | "user.role_change";
 

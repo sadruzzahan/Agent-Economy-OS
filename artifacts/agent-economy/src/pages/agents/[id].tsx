@@ -142,9 +142,16 @@ function RuntimeActivityTab({ agentId }: { agentId: number }) {
   );
 }
 
-function RotateKeyCard({ agentId }: { agentId: number }) {
+function RotateKeyCard({
+  agentId,
+  agentName,
+}: {
+  agentId: number;
+  agentName: string;
+}) {
   const [open, setOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [nameEcho, setNameEcho] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
@@ -170,6 +177,7 @@ function RotateKeyCard({ agentId }: { agentId: number }) {
     setOpen(false);
     setNewKey(null);
     setConfirmed(false);
+    setNameEcho("");
     setCopied(false);
     mutation.reset();
   }
@@ -275,14 +283,44 @@ function RotateKeyCard({ agentId }: { agentId: number }) {
                   be recovered.
                 </span>
               </label>
+              <div className="space-y-2 text-sm">
+                <label
+                  htmlFor="rotate-confirm-name"
+                  className="block text-muted-foreground"
+                >
+                  Type the agent's name{" "}
+                  <span className="font-mono font-medium text-foreground">
+                    {agentName}
+                  </span>{" "}
+                  to confirm:
+                </label>
+                <input
+                  id="rotate-confirm-name"
+                  type="text"
+                  value={nameEcho}
+                  onChange={(e) => setNameEcho(e.target.value)}
+                  placeholder={agentName}
+                  className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm"
+                  data-testid="input-confirm-agent-name"
+                />
+              </div>
               <DialogFooter className="gap-2">
                 <Button variant="outline" onClick={reset}>
                   Cancel
                 </Button>
                 <Button
                   variant="destructive"
-                  disabled={!confirmed || mutation.isPending}
-                  onClick={() => mutation.mutate({ agentId })}
+                  disabled={
+                    !confirmed ||
+                    nameEcho !== agentName ||
+                    mutation.isPending
+                  }
+                  onClick={() =>
+                    mutation.mutate({
+                      agentId,
+                      data: { confirmAgentName: nameEcho },
+                    })
+                  }
                   data-testid="button-confirm-rotate"
                 >
                   {mutation.isPending ? (
@@ -586,7 +624,9 @@ export default function AgentProfile() {
               </CardContent>
             </Card>
 
-            {isOwner && <RotateKeyCard agentId={agentId} />}
+            {isOwner && (
+              <RotateKeyCard agentId={agentId} agentName={agent.name} />
+            )}
           </div>
         </div>
       </div>

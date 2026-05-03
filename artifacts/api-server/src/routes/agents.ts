@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { and, eq, inArray, ilike, sql, desc } from "drizzle-orm";
+import { z } from "zod";
 import crypto from "node:crypto";
 import {
   db,
@@ -156,8 +157,7 @@ async function buildAgentDto(agentRow: {
 router.get("/agents", async (req: Request, res): Promise<void> => {
   const parsed = ListAgentsQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw Errors.badRequest(parsed.error.message);
   }
 
   const { ownedByMe, capabilityId, minReputation, search } = parsed.data;
@@ -166,8 +166,7 @@ router.get("/agents", async (req: Request, res): Promise<void> => {
   if (ownedByMe) {
     const auth = getAuth(req);
     if (!auth?.userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
+      throw Errors.unauthorized("Unauthorized");
     }
     const me = await getOrCreateDbUser(auth.userId);
     conditions.push(eq(agentsTable.ownerUserId, me.id));
@@ -206,8 +205,7 @@ router.get("/agents", async (req: Request, res): Promise<void> => {
 router.post("/agents", requireAuth, async (req, res): Promise<void> => {
   const parsed = CreateAgentBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw Errors.badRequest(parsed.error.message);
   }
   const me = req.dbUser!;
   const { name, description, capabilityIds } = parsed.data;
@@ -226,8 +224,7 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
     })
     .returning();
   if (!agent) {
-    res.status(500).json({ error: "Failed to create agent" });
-    return;
+    throw new Error("Failed to create agent");
   }
 
   if (capabilityIds.length > 0) {
@@ -272,16 +269,14 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
 router.get("/agents/:agentId", async (req, res): Promise<void> => {
   const params = GetAgentParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
+    throw Errors.badRequest(params.error.message);
   }
   const [agent] = await db
     .select()
     .from(agentsTable)
     .where(eq(agentsTable.id, params.data.agentId));
   if (!agent) {
-    res.status(404).json({ error: "Agent not found" });
-    return;
+    throw Errors.notFound("Agent not found");
   }
   const dto = await buildAgentDto(agent);
   res.json(GetAgentResponse.parse(dto));
@@ -290,13 +285,11 @@ router.get("/agents/:agentId", async (req, res): Promise<void> => {
 router.patch("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
   const params = UpdateAgentParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
+    throw Errors.badRequest(params.error.message);
   }
   const body = UpdateAgentBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: body.error.message });
-    return;
+    throw Errors.badRequest(body.error.message);
   }
   const me = req.dbUser!;
   const [agent] = await db
@@ -304,12 +297,10 @@ router.patch("/agents/:agentId", requireAuth, async (req, res): Promise<void> =>
     .from(agentsTable)
     .where(eq(agentsTable.id, params.data.agentId));
   if (!agent) {
-    res.status(404).json({ error: "Agent not found" });
-    return;
+    throw Errors.notFound("Agent not found");
   }
   if (agent.ownerUserId !== me.id) {
-    res.status(401).json({ error: "Not your agent" });
-    return;
+    throw Errors.unauthorized("Not your agent");
   }
   const updates: Record<string, unknown> = {};
   if (body.data.name !== undefined) updates["name"] = body.data.name;
@@ -365,8 +356,7 @@ router.delete(
   async (req, res): Promise<void> => {
     const params = DeactivateAgentParams.safeParse(req.params);
     if (!params.success) {
-      res.status(400).json({ error: params.error.message });
-      return;
+      throw Errors.badRequest(params.error.message);
     }
     const me = req.dbUser!;
     const [agent] = await db
@@ -374,12 +364,10 @@ router.delete(
       .from(agentsTable)
       .where(eq(agentsTable.id, params.data.agentId));
     if (!agent) {
-      res.status(404).json({ error: "Agent not found" });
-      return;
+      throw Errors.notFound("Agent not found");
     }
     if (agent.ownerUserId !== me.id) {
-      res.status(401).json({ error: "Not your agent" });
-      return;
+      throw Errors.unauthorized("Not your agent");
     }
     await db
       .update(agentsTable)
@@ -402,6 +390,15 @@ router.delete(
  * plaintext key exactly once. Owner-only; rate-limited so a stolen
  * dashboard session can't churn keys.
  */
+const RotateKeyBody = z.object({
+  // Re-auth gate. The caller must echo the agent's exact name to confirm
+  // they actually have access to the dashboard view that displays it.
+  // This is the same pattern GitHub uses for repo deletion: a string
+  // confirmation prevents one-click CSRF or hijacked-session abuse from
+  // silently invalidating an agent's credentials.
+  confirmAgentName: z.string().min(1),
+});
+
 router.post(
   "/agents/:agentId/rotate-key",
   requireAuth,
@@ -412,6 +409,12 @@ router.post(
       if (!params.success) {
         throw Errors.badRequest(params.error.message);
       }
+      const body = RotateKeyBody.safeParse(req.body ?? {});
+      if (!body.success) {
+        throw Errors.badRequest(
+          "Body must include confirmAgentName matching the agent's name",
+        );
+      }
       const me = req.dbUser!;
       const [agent] = await db
         .select()
@@ -420,6 +423,11 @@ router.post(
       if (!agent) throw Errors.notFound("Agent not found");
       if (agent.ownerUserId !== me.id) {
         throw Errors.forbidden("Only the agent owner can rotate its API key");
+      }
+      if (body.data.confirmAgentName !== agent.name) {
+        throw Errors.forbidden(
+          "confirmAgentName does not match the agent's name",
+        );
       }
 
       const fresh = generateApiKey();
@@ -479,8 +487,7 @@ router.get(
   async (req, res): Promise<void> => {
     const params = ListAgentReviewsParams.safeParse(req.params);
     if (!params.success) {
-      res.status(400).json({ error: params.error.message });
-      return;
+      throw Errors.badRequest(params.error.message);
     }
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
     const pageSize = Math.min(50, Math.max(1, parseInt(String(req.query.pageSize ?? "10"), 10) || 10));
@@ -525,8 +532,7 @@ router.get(
   async (req, res): Promise<void> => {
     const params = GetAgentReputationHistoryParams.safeParse(req.params);
     if (!params.success) {
-      res.status(400).json({ error: params.error.message });
-      return;
+      throw Errors.badRequest(params.error.message);
     }
     const rows = await db
       .select()
@@ -547,19 +553,16 @@ router.get(
   async (req, res): Promise<void> => {
     const agentId = parseInt(String(req.params.agentId), 10);
     if (isNaN(agentId)) {
-      res.status(400).json({ error: "Invalid agent ID" });
-      return;
+      throw Errors.badRequest("Invalid agent ID");
     }
     const me = req.dbUser!;
     // Only the agent owner may view runtime activity
     const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
     if (!agent) {
-      res.status(404).json({ error: "Agent not found" });
-      return;
+      throw Errors.notFound("Agent not found");
     }
     if (agent.ownerUserId !== me.id) {
-      res.status(403).json({ error: "Only the agent owner can view runtime activity" });
-      return;
+      throw Errors.forbidden("Only the agent owner can view runtime activity");
     }
     const limit = Math.min(100, parseInt(String(req.query.limit ?? "50"), 10) || 50);
     const rows = await db

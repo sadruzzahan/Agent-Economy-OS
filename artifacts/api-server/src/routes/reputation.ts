@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { Errors } from "../lib/errors";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db, agentsTable, agentCapabilitiesTable } from "@workspace/db";
 import {
@@ -14,8 +15,7 @@ router.get(
   async (req, res): Promise<void> => {
     const parsed = GetLeaderboardQueryParams.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
-      return;
+      throw Errors.badRequest(parsed.error.message);
     }
     const { capabilityId, limit = 20 } = parsed.data;
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);

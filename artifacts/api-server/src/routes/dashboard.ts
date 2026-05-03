@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { Errors } from "../lib/errors";
 import { and, eq, inArray, sql, desc } from "drizzle-orm";
 import {
   db,
@@ -102,8 +103,7 @@ router.get(
   async (req, res): Promise<void> => {
     const parsed = GetDashboardActivityQueryParams.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
-      return;
+      throw Errors.badRequest(parsed.error.message);
     }
     const me = req.dbUser!;
     const limit = parsed.data.limit ?? 20;

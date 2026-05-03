@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { Errors } from "../lib/errors";
 import { and, eq, inArray, ilike, sql, desc, gte, lte, or } from "drizzle-orm";
 import {
   db,
@@ -134,8 +135,7 @@ async function buildTaskDetail(t: typeof tasksTable.$inferSelect) {
 router.get("/tasks", async (req, res): Promise<void> => {
   const parsed = ListTasksQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw Errors.badRequest(parsed.error.message);
   }
   const {
     status,
@@ -169,8 +169,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
   if (postedByMe || assignedToMyAgents) {
     const auth = getAuth(req);
     if (!auth?.userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
+      throw Errors.unauthorized("Unauthorized");
     }
     const me = await getOrCreateDbUser(auth.userId);
     if (postedByMe) conditions.push(eq(tasksTable.postedByUserId, me.id));
@@ -211,8 +210,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
 router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> => {
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw Errors.badRequest(parsed.error.message);
   }
   const me = req.dbUser!;
   const {
@@ -227,8 +225,7 @@ router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> 
   } = parsed.data;
 
   if (n(me.postingBalance) < paymentAmount) {
-    res.status(400).json({ error: "Insufficient posting balance" });
-    return;
+    throw Errors.badRequest("Insufficient posting balance");
   }
 
   const task = await db.transaction(async (tx) => {
@@ -309,16 +306,14 @@ router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> 
 router.get("/tasks/:taskId", async (req, res): Promise<void> => {
   const params = GetTaskParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
+    throw Errors.badRequest(params.error.message);
   }
   const [task] = await db
     .select()
     .from(tasksTable)
     .where(eq(tasksTable.id, params.data.taskId));
   if (!task) {
-    res.status(404).json({ error: "Task not found" });
-    return;
+    throw Errors.notFound("Task not found");
   }
   const dto = await buildTaskDetail(task);
   res.json(GetTaskResponse.parse(dto));
@@ -332,8 +327,7 @@ router.post(
     const params = AssignTaskParams.safeParse(req.params);
     const body = AssignTaskBody.safeParse(req.body);
     if (!params.success || !body.success) {
-      res.status(400).json({ error: "Invalid request" });
-      return;
+      throw Errors.badRequest("Invalid request");
     }
     const me = req.dbUser!;
     const [task] = await db
@@ -341,24 +335,20 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, params.data.taskId));
     if (!task) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     if (task.status !== "open") {
-      res.status(400).json({ error: "Task is not open" });
-      return;
+      throw Errors.badRequest("Task is not open");
     }
     if (task.postedByUserId !== me.id) {
-      res.status(401).json({ error: "Only the task poster can assign an agent" });
-      return;
+      throw Errors.unauthorized("Only the task poster can assign an agent");
     }
     const [agent] = await db
       .select()
       .from(agentsTable)
       .where(eq(agentsTable.id, body.data.agentId));
     if (!agent || agent.status !== "active") {
-      res.status(400).json({ error: "Agent not found or not active" });
-      return;
+      throw Errors.badRequest("Agent not found or not active");
     }
     await db.transaction(async (tx) => {
       await tx
@@ -396,8 +386,7 @@ router.post(
   async (req, res): Promise<void> => {
     const params = StartTaskParams.safeParse(req.params);
     if (!params.success) {
-      res.status(400).json({ error: params.error.message });
-      return;
+      throw Errors.badRequest(params.error.message);
     }
     const me = req.dbUser!;
     const [task] = await db
@@ -405,20 +394,17 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, params.data.taskId));
     if (!task) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     if (task.status !== "assigned" || !task.assignedAgentId) {
-      res.status(400).json({ error: "Task not in assigned state" });
-      return;
+      throw Errors.badRequest("Task not in assigned state");
     }
     const [agent] = await db
       .select()
       .from(agentsTable)
       .where(eq(agentsTable.id, task.assignedAgentId));
     if (!agent || agent.ownerUserId !== me.id) {
-      res.status(401).json({ error: "Not your agent" });
-      return;
+      throw Errors.unauthorized("Not your agent");
     }
     await db.transaction(async (tx) => {
       await tx
@@ -455,8 +441,7 @@ router.post(
     const params = SubmitTaskResultParams.safeParse(req.params);
     const body = SubmitTaskResultBody.safeParse(req.body);
     if (!params.success || !body.success) {
-      res.status(400).json({ error: "Invalid request" });
-      return;
+      throw Errors.badRequest("Invalid request");
     }
     const me = req.dbUser!;
     const [task] = await db
@@ -464,20 +449,17 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, params.data.taskId));
     if (!task || !task.assignedAgentId) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     const [agent] = await db
       .select()
       .from(agentsTable)
       .where(eq(agentsTable.id, task.assignedAgentId));
     if (!agent || agent.ownerUserId !== me.id) {
-      res.status(401).json({ error: "Not your agent" });
-      return;
+      throw Errors.unauthorized("Not your agent");
     }
     if (task.status !== "in_progress" && task.status !== "assigned") {
-      res.status(400).json({ error: "Task not in submittable state" });
-      return;
+      throw Errors.badRequest("Task not in submittable state");
     }
     await db.transaction(async (tx) => {
       await tx
@@ -520,8 +502,7 @@ router.post(
     const params = VerifyTaskParams.safeParse(req.params);
     const body = VerifyTaskBody.safeParse(req.body);
     if (!params.success || !body.success) {
-      res.status(400).json({ error: "Invalid request" });
-      return;
+      throw Errors.badRequest("Invalid request");
     }
     const me = req.dbUser!;
     const [task] = await db
@@ -529,16 +510,13 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, params.data.taskId));
     if (!task || !task.assignedAgentId) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     if (task.postedByUserId !== me.id) {
-      res.status(401).json({ error: "Not your task" });
-      return;
+      throw Errors.unauthorized("Not your task");
     }
     if (task.status !== "submitted") {
-      res.status(400).json({ error: "Task not in submitted state" });
-      return;
+      throw Errors.badRequest("Task not in submitted state");
     }
     const payment = n(task.paymentAmount);
     const assignedAgentId = task.assignedAgentId;
@@ -644,8 +622,7 @@ router.post(
     const params = DisputeTaskParams.safeParse(req.params);
     const body = DisputeTaskBody.safeParse(req.body);
     if (!params.success || !body.success) {
-      res.status(400).json({ error: "Invalid request" });
-      return;
+      throw Errors.badRequest("Invalid request");
     }
     const me = req.dbUser!;
     const [task] = await db
@@ -653,16 +630,13 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, params.data.taskId));
     if (!task) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     if (task.postedByUserId !== me.id) {
-      res.status(401).json({ error: "Not your task" });
-      return;
+      throw Errors.unauthorized("Not your task");
     }
     if (task.status !== "submitted") {
-      res.status(400).json({ error: "Task must be in submitted state to dispute" });
-      return;
+      throw Errors.badRequest("Task must be in submitted state to dispute");
     }
     const payment = n(task.paymentAmount);
 
@@ -736,8 +710,7 @@ router.post(
     const params = ResolveDisputeParams.safeParse(req.params);
     const body = ResolveDisputeBody.safeParse(req.body);
     if (!params.success || !body.success) {
-      res.status(400).json({ error: "Invalid request" });
-      return;
+      throw Errors.badRequest("Invalid request");
     }
     const me = req.dbUser!;
     const [task] = await db
@@ -745,16 +718,13 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, params.data.taskId));
     if (!task) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     if (task.postedByUserId !== me.id) {
-      res.status(401).json({ error: "Only the task poster can resolve a dispute" });
-      return;
+      throw Errors.unauthorized("Only the task poster can resolve a dispute");
     }
     if (task.status !== "disputed") {
-      res.status(400).json({ error: "Task is not in disputed state" });
-      return;
+      throw Errors.badRequest("Task is not in disputed state");
     }
     if (task.disputeOutcome !== null) {
       // Idempotent: same outcome → 200 no-op; different outcome → 409 conflict
@@ -763,8 +733,7 @@ router.post(
         res.json(ResolveDisputeResponse.parse(current));
         return;
       }
-      res.status(409).json({ error: "Dispute already resolved with a different outcome" });
-      return;
+      throw Errors.conflict("Dispute already resolved with a different outcome");
     }
 
     await db.transaction(async (tx) => {
@@ -804,19 +773,16 @@ router.get(
   async (req, res): Promise<void> => {
     const taskId = parseInt(String(req.params.taskId), 10);
     if (isNaN(taskId)) {
-      res.status(400).json({ error: "Invalid task ID" });
-      return;
+      throw Errors.badRequest("Invalid task ID");
     }
     const me = req.dbUser!;
     const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
     if (!task) {
-      res.status(404).json({ error: "Task not found" });
-      return;
+      throw Errors.notFound("Task not found");
     }
     // Only the task poster may view the checkpoint
     if (task.postedByUserId !== me.id) {
-      res.status(403).json({ error: "Only the task poster can view checkpoints" });
-      return;
+      throw Errors.forbidden("Only the task poster can view checkpoints");
     }
     const [cp] = await db
       .select()
