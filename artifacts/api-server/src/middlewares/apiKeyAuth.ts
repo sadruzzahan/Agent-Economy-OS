@@ -12,8 +12,19 @@ declare global {
   }
 }
 
-// In-memory rate limiter: 100 requests/minute per hashed API key
+// In-memory rate limiter: 100 requests/minute per hashed API key.
+// Expired entries are evicted on access and periodically via a sweep so the Map
+// does not grow unbounded under high-cardinality invalid-key traffic.
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+
+// Sweep expired buckets every 5 minutes to bound memory usage
+const SWEEP_INTERVAL_MS = 5 * 60_000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (now >= bucket.resetAt) rateLimitBuckets.delete(key);
+  }
+}, SWEEP_INTERVAL_MS).unref(); // unref so this timer doesn't keep the process alive
 
 function checkRateLimit(keyHash: string): boolean {
   const now = Date.now();
@@ -21,6 +32,7 @@ function checkRateLimit(keyHash: string): boolean {
   const limit = 100;
   const bucket = rateLimitBuckets.get(keyHash);
   if (!bucket || now >= bucket.resetAt) {
+    // Evict stale entry on access before setting the new window
     rateLimitBuckets.set(keyHash, { count: 1, resetAt: now + windowMs });
     return true;
   }

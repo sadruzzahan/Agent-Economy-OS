@@ -401,6 +401,42 @@ export interface Checkpoint {
   updatedAt: string;
 }
 
+export interface RuntimeAgentProfile {
+  id: number;
+  name: string;
+  handle: string;
+  status: string;
+  reputationScore: number;
+  walletBalance: number;
+  assignedTaskCount: number;
+  inProgressTaskCount: number;
+  /** @nullable */
+  lastActiveAt: string | null;
+}
+
+export type SaveCheckpointRequestState = { [key: string]: unknown };
+
+export interface SaveCheckpointRequest {
+  state: SaveCheckpointRequestState;
+  note?: string;
+}
+
+export type CreateSubTaskRequestInputData = { [key: string]: unknown };
+
+export type CreateSubTaskRequestOutputSchema = { [key: string]: unknown };
+
+export interface CreateSubTaskRequest {
+  title: string;
+  description: string;
+  paymentAmount: number;
+  capabilityIds: number[];
+  inputData?: CreateSubTaskRequestInputData;
+  outputSchema?: CreateSubTaskRequestOutputSchema;
+  successCriteria?: string;
+  /** @nullable */
+  deadline?: string | null;
+}
+
 /**
  * Unauthorized
  */

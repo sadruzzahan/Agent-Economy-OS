@@ -26,9 +26,11 @@ import type {
   Checkpoint,
   CreateAgentRequest,
   CreateAgentResponse,
+  CreateSubTaskRequest,
   CreateTaskRequest,
   DashboardSummary,
   DisputeTaskRequest,
+  ErrorResponse,
   GetAgentActivityParams,
   GetDashboardActivityParams,
   GetLeaderboardParams,
@@ -43,6 +45,8 @@ import type {
   ReputationHistoryPoint,
   ResolveDisputeRequest,
   Review,
+  RuntimeAgentProfile,
+  SaveCheckpointRequest,
   SubmitTaskRequest,
   Task,
   TaskDetail,
@@ -2540,3 +2544,609 @@ export function useGetTaskCheckpoint<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get the authenticated agent identity and wallet balance (requires Agent API key)
+ */
+export const getRuntimeGetMeUrl = () => {
+  return `/api/runtime/me`;
+};
+
+export const runtimeGetMe = async (
+  options?: RequestInit,
+): Promise<RuntimeAgentProfile> => {
+  return customFetch<RuntimeAgentProfile>(getRuntimeGetMeUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getRuntimeGetMeQueryKey = () => {
+  return [`/api/runtime/me`] as const;
+};
+
+export const getRuntimeGetMeQueryOptions = <
+  TData = Awaited<ReturnType<typeof runtimeGetMe>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetMe>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getRuntimeGetMeQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof runtimeGetMe>>> = ({
+    signal,
+  }) => runtimeGetMe({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetMe>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type RuntimeGetMeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeGetMe>>
+>;
+export type RuntimeGetMeQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Get the authenticated agent identity and wallet balance (requires Agent API key)
+ */
+
+export function useRuntimeGetMe<
+  TData = Awaited<ReturnType<typeof runtimeGetMe>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetMe>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getRuntimeGetMeQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List tasks assigned to or in progress by the authenticated agent (requires Agent API key)
+ */
+export const getRuntimeGetAssignedTasksUrl = () => {
+  return `/api/runtime/tasks/assigned`;
+};
+
+export const runtimeGetAssignedTasks = async (
+  options?: RequestInit,
+): Promise<Task[]> => {
+  return customFetch<Task[]>(getRuntimeGetAssignedTasksUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getRuntimeGetAssignedTasksQueryKey = () => {
+  return [`/api/runtime/tasks/assigned`] as const;
+};
+
+export const getRuntimeGetAssignedTasksQueryOptions = <
+  TData = Awaited<ReturnType<typeof runtimeGetAssignedTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetAssignedTasks>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getRuntimeGetAssignedTasksQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof runtimeGetAssignedTasks>>
+  > = ({ signal }) => runtimeGetAssignedTasks({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetAssignedTasks>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type RuntimeGetAssignedTasksQueryResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeGetAssignedTasks>>
+>;
+export type RuntimeGetAssignedTasksQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary List tasks assigned to or in progress by the authenticated agent (requires Agent API key)
+ */
+
+export function useRuntimeGetAssignedTasks<
+  TData = Awaited<ReturnType<typeof runtimeGetAssignedTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetAssignedTasks>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getRuntimeGetAssignedTasksQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Accept an assigned task transitioning it to in_progress (requires Agent API key)
+ */
+export const getRuntimeAcceptTaskUrl = (taskId: number) => {
+  return `/api/runtime/tasks/${taskId}/accept`;
+};
+
+export const runtimeAcceptTask = async (
+  taskId: number,
+  options?: RequestInit,
+): Promise<Task> => {
+  return customFetch<Task>(getRuntimeAcceptTaskUrl(taskId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRuntimeAcceptTaskMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeAcceptTask>>,
+    TError,
+    { taskId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runtimeAcceptTask>>,
+  TError,
+  { taskId: number },
+  TContext
+> => {
+  const mutationKey = ["runtimeAcceptTask"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runtimeAcceptTask>>,
+    { taskId: number }
+  > = (props) => {
+    const { taskId } = props ?? {};
+
+    return runtimeAcceptTask(taskId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RuntimeAcceptTaskMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeAcceptTask>>
+>;
+
+export type RuntimeAcceptTaskMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Accept an assigned task transitioning it to in_progress (requires Agent API key)
+ */
+export const useRuntimeAcceptTask = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeAcceptTask>>,
+    TError,
+    { taskId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runtimeAcceptTask>>,
+  TError,
+  { taskId: number },
+  TContext
+> => {
+  return useMutation(getRuntimeAcceptTaskMutationOptions(options));
+};
+
+/**
+ * @summary Get the latest checkpoint for an assigned task (requires Agent API key)
+ */
+export const getRuntimeGetCheckpointUrl = (taskId: number) => {
+  return `/api/runtime/tasks/${taskId}/checkpoint`;
+};
+
+export const runtimeGetCheckpoint = async (
+  taskId: number,
+  options?: RequestInit,
+): Promise<Checkpoint | null> => {
+  return customFetch<Checkpoint | null>(getRuntimeGetCheckpointUrl(taskId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getRuntimeGetCheckpointQueryKey = (taskId: number) => {
+  return [`/api/runtime/tasks/${taskId}/checkpoint`] as const;
+};
+
+export const getRuntimeGetCheckpointQueryOptions = <
+  TData = Awaited<ReturnType<typeof runtimeGetCheckpoint>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  taskId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof runtimeGetCheckpoint>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getRuntimeGetCheckpointQueryKey(taskId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof runtimeGetCheckpoint>>
+  > = ({ signal }) =>
+    runtimeGetCheckpoint(taskId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!taskId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof runtimeGetCheckpoint>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type RuntimeGetCheckpointQueryResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeGetCheckpoint>>
+>;
+export type RuntimeGetCheckpointQueryError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Get the latest checkpoint for an assigned task (requires Agent API key)
+ */
+
+export function useRuntimeGetCheckpoint<
+  TData = Awaited<ReturnType<typeof runtimeGetCheckpoint>>,
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+>(
+  taskId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof runtimeGetCheckpoint>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getRuntimeGetCheckpointQueryOptions(taskId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save a progress checkpoint for an in-progress task (requires Agent API key)
+ */
+export const getRuntimeSaveCheckpointUrl = (taskId: number) => {
+  return `/api/runtime/tasks/${taskId}/checkpoint`;
+};
+
+export const runtimeSaveCheckpoint = async (
+  taskId: number,
+  saveCheckpointRequest: SaveCheckpointRequest,
+  options?: RequestInit,
+): Promise<Checkpoint> => {
+  return customFetch<Checkpoint>(getRuntimeSaveCheckpointUrl(taskId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(saveCheckpointRequest),
+  });
+};
+
+export const getRuntimeSaveCheckpointMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeSaveCheckpoint>>,
+    TError,
+    { taskId: number; data: BodyType<SaveCheckpointRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runtimeSaveCheckpoint>>,
+  TError,
+  { taskId: number; data: BodyType<SaveCheckpointRequest> },
+  TContext
+> => {
+  const mutationKey = ["runtimeSaveCheckpoint"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runtimeSaveCheckpoint>>,
+    { taskId: number; data: BodyType<SaveCheckpointRequest> }
+  > = (props) => {
+    const { taskId, data } = props ?? {};
+
+    return runtimeSaveCheckpoint(taskId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RuntimeSaveCheckpointMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeSaveCheckpoint>>
+>;
+export type RuntimeSaveCheckpointMutationBody = BodyType<SaveCheckpointRequest>;
+export type RuntimeSaveCheckpointMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Save a progress checkpoint for an in-progress task (requires Agent API key)
+ */
+export const useRuntimeSaveCheckpoint = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeSaveCheckpoint>>,
+    TError,
+    { taskId: number; data: BodyType<SaveCheckpointRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runtimeSaveCheckpoint>>,
+  TError,
+  { taskId: number; data: BodyType<SaveCheckpointRequest> },
+  TContext
+> => {
+  return useMutation(getRuntimeSaveCheckpointMutationOptions(options));
+};
+
+/**
+ * @summary Submit completed work for a task (requires Agent API key)
+ */
+export const getRuntimeSubmitTaskUrl = (taskId: number) => {
+  return `/api/runtime/tasks/${taskId}/submit`;
+};
+
+export const runtimeSubmitTask = async (
+  taskId: number,
+  submitTaskRequest: SubmitTaskRequest,
+  options?: RequestInit,
+): Promise<Task> => {
+  return customFetch<Task>(getRuntimeSubmitTaskUrl(taskId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(submitTaskRequest),
+  });
+};
+
+export const getRuntimeSubmitTaskMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeSubmitTask>>,
+    TError,
+    { taskId: number; data: BodyType<SubmitTaskRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runtimeSubmitTask>>,
+  TError,
+  { taskId: number; data: BodyType<SubmitTaskRequest> },
+  TContext
+> => {
+  const mutationKey = ["runtimeSubmitTask"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runtimeSubmitTask>>,
+    { taskId: number; data: BodyType<SubmitTaskRequest> }
+  > = (props) => {
+    const { taskId, data } = props ?? {};
+
+    return runtimeSubmitTask(taskId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RuntimeSubmitTaskMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeSubmitTask>>
+>;
+export type RuntimeSubmitTaskMutationBody = BodyType<SubmitTaskRequest>;
+export type RuntimeSubmitTaskMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Submit completed work for a task (requires Agent API key)
+ */
+export const useRuntimeSubmitTask = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | NotFoundResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeSubmitTask>>,
+    TError,
+    { taskId: number; data: BodyType<SubmitTaskRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runtimeSubmitTask>>,
+  TError,
+  { taskId: number; data: BodyType<SubmitTaskRequest> },
+  TContext
+> => {
+  return useMutation(getRuntimeSubmitTaskMutationOptions(options));
+};
+
+/**
+ * @summary Create a sub-task funded from the agent wallet (requires Agent API key)
+ */
+export const getRuntimeCreateSubTaskUrl = () => {
+  return `/api/runtime/tasks`;
+};
+
+export const runtimeCreateSubTask = async (
+  createSubTaskRequest: CreateSubTaskRequest,
+  options?: RequestInit,
+): Promise<Task> => {
+  return customFetch<Task>(getRuntimeCreateSubTaskUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSubTaskRequest),
+  });
+};
+
+export const getRuntimeCreateSubTaskMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeCreateSubTask>>,
+    TError,
+    { data: BodyType<CreateSubTaskRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runtimeCreateSubTask>>,
+  TError,
+  { data: BodyType<CreateSubTaskRequest> },
+  TContext
+> => {
+  const mutationKey = ["runtimeCreateSubTask"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runtimeCreateSubTask>>,
+    { data: BodyType<CreateSubTaskRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return runtimeCreateSubTask(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RuntimeCreateSubTaskMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runtimeCreateSubTask>>
+>;
+export type RuntimeCreateSubTaskMutationBody = BodyType<CreateSubTaskRequest>;
+export type RuntimeCreateSubTaskMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Create a sub-task funded from the agent wallet (requires Agent API key)
+ */
+export const useRuntimeCreateSubTask = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runtimeCreateSubTask>>,
+    TError,
+    { data: BodyType<CreateSubTaskRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runtimeCreateSubTask>>,
+  TError,
+  { data: BodyType<CreateSubTaskRequest> },
+  TContext
+> => {
+  return useMutation(getRuntimeCreateSubTaskMutationOptions(options));
+};

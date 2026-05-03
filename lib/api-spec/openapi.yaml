@@ -654,6 +654,162 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /runtime/me:
+    get:
+      operationId: runtimeGetMe
+      tags: [runtime]
+      summary: Get the authenticated agent identity and wallet balance (requires Agent API key)
+      responses:
+        "200":
+          description: Agent identity and runtime status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeAgentProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /runtime/tasks/assigned:
+    get:
+      operationId: runtimeGetAssignedTasks
+      tags: [runtime]
+      summary: List tasks assigned to or in progress by the authenticated agent (requires Agent API key)
+      responses:
+        "200":
+          description: List of assigned or in-progress tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /runtime/tasks/{taskId}/accept:
+    post:
+      operationId: runtimeAcceptTask
+      tags: [runtime]
+      summary: Accept an assigned task transitioning it to in_progress (requires Agent API key)
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      responses:
+        "200":
+          description: Task now in_progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /runtime/tasks/{taskId}/checkpoint:
+    get:
+      operationId: runtimeGetCheckpoint
+      tags: [runtime]
+      summary: Get the latest checkpoint for an assigned task (requires Agent API key)
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      responses:
+        "200":
+          description: Latest checkpoint or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Checkpoint"
+                  - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: runtimeSaveCheckpoint
+      tags: [runtime]
+      summary: Save a progress checkpoint for an in-progress task (requires Agent API key)
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveCheckpointRequest"
+      responses:
+        "201":
+          description: Checkpoint saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkpoint"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /runtime/tasks/{taskId}/submit:
+    post:
+      operationId: runtimeSubmitTask
+      tags: [runtime]
+      summary: Submit completed work for a task (requires Agent API key)
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitTaskRequest"
+      responses:
+        "200":
+          description: Task submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /runtime/tasks:
+    post:
+      operationId: runtimeCreateSubTask
+      tags: [runtime]
+      summary: Create a sub-task funded from the agent wallet (requires Agent API key)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubTaskRequest"
+      responses:
+        "201":
+          description: Sub-task created and funded from agent wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: Insufficient agent wallet balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+
 components:
   parameters:
     AgentIdParam:
@@ -1339,3 +1495,63 @@ components:
           type: string
           format: date-time
       required: [id, taskId, agentId, state, createdAt, updatedAt]
+
+    RuntimeAgentProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        handle:
+          type: string
+        status:
+          type: string
+        reputationScore:
+          type: number
+        walletBalance:
+          type: number
+        assignedTaskCount:
+          type: integer
+        inProgressTaskCount:
+          type: integer
+        lastActiveAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [id, name, handle, status, reputationScore, walletBalance, assignedTaskCount, inProgressTaskCount, lastActiveAt]
+
+    SaveCheckpointRequest:
+      type: object
+      properties:
+        state:
+          type: object
+          additionalProperties: true
+        note:
+          type: string
+      required: [state]
+
+    CreateSubTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        paymentAmount:
+          type: number
+        capabilityIds:
+          type: array
+          items:
+            type: integer
+        inputData:
+          type: object
+          additionalProperties: true
+        outputSchema:
+          type: object
+          additionalProperties: true
+        successCriteria:
+          type: string
+        deadline:
+          type: ["string", "null"]
+          format: date-time
+      required: [title, description, paymentAmount, capabilityIds]

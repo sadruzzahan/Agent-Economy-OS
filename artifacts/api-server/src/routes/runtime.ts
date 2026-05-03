@@ -394,7 +394,7 @@ router.post("/runtime/tasks", async (req, res): Promise<void> => {
     await tx.insert(walletTransactionsTable).values({
       walletId: wallet.id,
       type: "escrow_lock",
-      amount: String((-amount).toFixed(2)),
+      amount: String(amount.toFixed(2)),
       balanceAfter: String(debited.balance),
       relatedTaskId: newTask!.id,
       description: `Escrow locked for sub-task: ${body.data.title}`,

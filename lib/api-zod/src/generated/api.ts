@@ -927,3 +927,185 @@ export const GetTaskCheckpointResponse = zod.union([
   }),
   zod.null(),
 ]);
+
+/**
+ * @summary Get the authenticated agent identity and wallet balance (requires Agent API key)
+ */
+export const RuntimeGetMeResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  handle: zod.string(),
+  status: zod.string(),
+  reputationScore: zod.number(),
+  walletBalance: zod.number(),
+  assignedTaskCount: zod.number(),
+  inProgressTaskCount: zod.number(),
+  lastActiveAt: zod.coerce.date().nullable(),
+});
+
+/**
+ * @summary List tasks assigned to or in progress by the authenticated agent (requires Agent API key)
+ */
+export const RuntimeGetAssignedTasksResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string(),
+  status: zod.enum([
+    "open",
+    "assigned",
+    "in_progress",
+    "submitted",
+    "complete",
+    "disputed",
+    "cancelled",
+  ]),
+  paymentAmount: zod.number(),
+  deadline: zod.coerce.date().nullish(),
+  postedByUserId: zod.number(),
+  postedByDisplayName: zod.string().nullish(),
+  assignedAgentId: zod.number().nullish(),
+  assignedAgentName: zod.string().nullish(),
+  capabilityRequirements: zod.array(
+    zod.object({
+      capabilityId: zod.number(),
+      slug: zod.string(),
+      name: zod.string(),
+      verified: zod.boolean(),
+      verifiedScore: zod.number().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const RuntimeGetAssignedTasksResponse = zod.array(
+  RuntimeGetAssignedTasksResponseItem,
+);
+
+/**
+ * @summary Accept an assigned task transitioning it to in_progress (requires Agent API key)
+ */
+export const RuntimeAcceptTaskParams = zod.object({
+  taskId: zod.coerce.number(),
+});
+
+export const RuntimeAcceptTaskResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string(),
+  status: zod.enum([
+    "open",
+    "assigned",
+    "in_progress",
+    "submitted",
+    "complete",
+    "disputed",
+    "cancelled",
+  ]),
+  paymentAmount: zod.number(),
+  deadline: zod.coerce.date().nullish(),
+  postedByUserId: zod.number(),
+  postedByDisplayName: zod.string().nullish(),
+  assignedAgentId: zod.number().nullish(),
+  assignedAgentName: zod.string().nullish(),
+  capabilityRequirements: zod.array(
+    zod.object({
+      capabilityId: zod.number(),
+      slug: zod.string(),
+      name: zod.string(),
+      verified: zod.boolean(),
+      verifiedScore: zod.number().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Get the latest checkpoint for an assigned task (requires Agent API key)
+ */
+export const RuntimeGetCheckpointParams = zod.object({
+  taskId: zod.coerce.number(),
+});
+
+export const RuntimeGetCheckpointResponse = zod.union([
+  zod.object({
+    id: zod.number(),
+    taskId: zod.number(),
+    agentId: zod.number(),
+    state: zod.record(zod.string(), zod.unknown()),
+    note: zod.string().nullish(),
+    createdAt: zod.coerce.date(),
+    updatedAt: zod.coerce.date(),
+  }),
+  zod.null(),
+]);
+
+/**
+ * @summary Save a progress checkpoint for an in-progress task (requires Agent API key)
+ */
+export const RuntimeSaveCheckpointParams = zod.object({
+  taskId: zod.coerce.number(),
+});
+
+export const RuntimeSaveCheckpointBody = zod.object({
+  state: zod.record(zod.string(), zod.unknown()),
+  note: zod.string().optional(),
+});
+
+/**
+ * @summary Submit completed work for a task (requires Agent API key)
+ */
+export const RuntimeSubmitTaskParams = zod.object({
+  taskId: zod.coerce.number(),
+});
+
+export const RuntimeSubmitTaskBody = zod.object({
+  result: zod.record(zod.string(), zod.unknown()),
+  notes: zod.string().nullish(),
+});
+
+export const RuntimeSubmitTaskResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string(),
+  status: zod.enum([
+    "open",
+    "assigned",
+    "in_progress",
+    "submitted",
+    "complete",
+    "disputed",
+    "cancelled",
+  ]),
+  paymentAmount: zod.number(),
+  deadline: zod.coerce.date().nullish(),
+  postedByUserId: zod.number(),
+  postedByDisplayName: zod.string().nullish(),
+  assignedAgentId: zod.number().nullish(),
+  assignedAgentName: zod.string().nullish(),
+  capabilityRequirements: zod.array(
+    zod.object({
+      capabilityId: zod.number(),
+      slug: zod.string(),
+      name: zod.string(),
+      verified: zod.boolean(),
+      verifiedScore: zod.number().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Create a sub-task funded from the agent wallet (requires Agent API key)
+ */
+export const RuntimeCreateSubTaskBody = zod.object({
+  title: zod.string(),
+  description: zod.string(),
+  paymentAmount: zod.number(),
+  capabilityIds: zod.array(zod.number()),
+  inputData: zod.record(zod.string(), zod.unknown()).optional(),
+  outputSchema: zod.record(zod.string(), zod.unknown()).optional(),
+  successCriteria: zod.string().optional(),
+  deadline: zod.coerce.date().nullish(),
+});
