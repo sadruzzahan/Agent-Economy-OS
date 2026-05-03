@@ -2,7 +2,7 @@ import { PublicLayout } from "@/components/layout";
 import { Protected } from "@/components/protected-route";
 import { useParams, Link } from "wouter";
 import { 
-  useGetTask, useGetMe, useListAgents, 
+  useGetTask, useGetMe, useListAgents, useGetAgent,
   useAssignTask, useStartTask, useSubmitTaskResult, 
   useVerifyTask, useDisputeTask 
 } from "@workspace/api-client-react";
@@ -26,7 +26,7 @@ import { ChevronDown, ChevronUp, Clock, CheckCircle2, AlertCircle } from "lucide
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getGetTaskQueryKey, getListTasksQueryKey, getGetMeQueryKey, getListAgentsQueryKey } from "@workspace/api-client-react";
+import { getGetTaskQueryKey, getListTasksQueryKey, getGetMeQueryKey, getListAgentsQueryKey, getGetAgentQueryKey } from "@workspace/api-client-react";
 import { ArrowRight } from "lucide-react";
 import { formatReputation } from "@/lib/format";
 
@@ -53,14 +53,28 @@ export default function TaskDetail() {
   const assignAgentIdFromUrl = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
   ).get("assignAgentId");
+  const assignAgentIdNum = parseInt(assignAgentIdFromUrl || "0", 10) || undefined;
+
+  // Fetch the externally-selected agent (cross-owner hire from leaderboard)
+  const { data: hireTargetAgent } = useGetAgent(assignAgentIdNum!, {
+    query: { enabled: !!assignAgentIdNum, queryKey: getGetAgentQueryKey(assignAgentIdNum!) },
+  });
+
   const [assignOpen, setAssignOpen] = useState(!!assignAgentIdFromUrl);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(assignAgentIdFromUrl ?? "");
-  
-  const eligibleAgents = myAgents?.filter(agent => 
-    task?.capabilityRequirements.some(req => 
+
+  // Poster's own agents that match capability requirements
+  const ownEligibleAgents = (myAgents ?? []).filter(agent =>
+    task?.capabilityRequirements.some(req =>
       agent.capabilities.some(ac => ac.capabilityId === req.capabilityId)
     )
   );
+
+  // Merge: externally-hired agent first, then own eligible (deduplicated)
+  const assignCandidates = [
+    ...(hireTargetAgent ? [hireTargetAgent] : []),
+    ...ownEligibleAgents.filter(a => !hireTargetAgent || a.id !== hireTargetAgent.id),
+  ];
 
   const handleAssign = () => {
     if (!selectedAgentId) return;
@@ -148,8 +162,8 @@ export default function TaskDetail() {
             </div>
             
             <div className="flex gap-2">
-              {/* ASSIGN (Open, and user has eligible agents) */}
-              {task.status === "open" && eligibleAgents && eligibleAgents.length > 0 && (
+              {/* ASSIGN (Open task, poster only, with at least one candidate agent) */}
+              {task.status === "open" && isPoster && assignCandidates.length > 0 && (
                 <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
                   <DialogTrigger asChild>
                     <Button data-testid="button-assign-agent">Assign Agent</Button>
@@ -157,7 +171,11 @@ export default function TaskDetail() {
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Assign Task</DialogTitle>
-                      <DialogDescription>Select one of your eligible agents to execute this task.</DialogDescription>
+                      <DialogDescription>
+                        {hireTargetAgent
+                          ? `Assign this task to ${hireTargetAgent.name} or choose one of your own eligible agents.`
+                          : "Select one of your eligible agents to execute this task."}
+                      </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
                       <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
@@ -165,8 +183,11 @@ export default function TaskDetail() {
                           <SelectValue placeholder="Select an agent" />
                         </SelectTrigger>
                         <SelectContent>
-                          {eligibleAgents.map(a => (
-                            <SelectItem key={a.id} value={String(a.id)}>{a.name} ({formatReputation(a.reputationScore)})</SelectItem>
+                          {assignCandidates.map(a => (
+                            <SelectItem key={a.id} value={String(a.id)}>
+                              {a.name} ({formatReputation(a.reputationScore)})
+                              {hireTargetAgent && a.id === hireTargetAgent.id && " · From Leaderboard"}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
