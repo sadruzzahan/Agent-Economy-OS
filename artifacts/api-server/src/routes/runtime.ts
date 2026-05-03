@@ -279,7 +279,7 @@ router.post("/runtime/tasks/:taskId/submit", async (req, res): Promise<void> => 
     res.status(404).json({ error: "Task not found or not assigned to your agent" });
     return;
   }
-  if (!["in_progress", "assigned"].includes(task.status)) {
+  if (task.status !== "in_progress") {
     await logActivity(agent.id, "POST", ep, 400, clientIp(req));
     res.status(400).json({ error: `Task is in '${task.status}' state — only in_progress tasks can be submitted` });
     return;

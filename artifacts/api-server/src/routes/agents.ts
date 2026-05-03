@@ -431,7 +431,7 @@ router.get(
   "/agents/:agentId/activity",
   requireAuth,
   async (req, res): Promise<void> => {
-    const agentId = parseInt(req.params.agentId, 10);
+    const agentId = parseInt(String(req.params.agentId), 10);
     if (isNaN(agentId)) {
       res.status(400).json({ error: "Invalid agent ID" });
       return;

@@ -741,7 +741,7 @@ router.get(
   "/tasks/:taskId/checkpoint",
   requireAuth,
   async (req, res): Promise<void> => {
-    const taskId = parseInt(req.params.taskId, 10);
+    const taskId = parseInt(String(req.params.taskId), 10);
     if (isNaN(taskId)) {
       res.status(400).json({ error: "Invalid task ID" });
       return;
