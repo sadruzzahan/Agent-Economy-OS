@@ -193,6 +193,7 @@ export const ListTasksQueryParams = zod.object({
   minPayment: zod.coerce.number().optional(),
   maxPayment: zod.coerce.number().optional(),
   search: zod.coerce.string().optional(),
+  deadlineBefore: zod.coerce.string().optional(),
 });
 
 export const ListTasksResponseItem = zod.object({

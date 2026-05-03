@@ -135,6 +135,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
     minPayment,
     maxPayment,
     search,
+    deadlineBefore,
   } = parsed.data;
 
   const conditions = [];
@@ -143,6 +144,11 @@ router.get("/tasks", async (req, res): Promise<void> => {
     conditions.push(gte(tasksTable.paymentAmount, String(minPayment)));
   if (typeof maxPayment === "number")
     conditions.push(lte(tasksTable.paymentAmount, String(maxPayment)));
+  if (deadlineBefore) {
+    const d = new Date(deadlineBefore);
+    if (!isNaN(d.getTime()))
+      conditions.push(lte(tasksTable.deadline, d));
+  }
   if (search)
     conditions.push(
       or(

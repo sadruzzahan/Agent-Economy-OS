@@ -380,6 +380,7 @@ export type ListTasksParams = {
   minPayment?: number;
   maxPayment?: number;
   search?: string;
+  deadlineBefore?: string;
 };
 
 export type ListWalletTransactionsParams = {

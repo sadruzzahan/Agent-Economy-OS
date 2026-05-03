@@ -20,6 +20,7 @@ export default function TasksList() {
   const [status, setStatus] = useState<TaskStatus | "all">("all");
   const [minPayment, setMinPayment] = useState<string>("");
   const [maxPayment, setMaxPayment] = useState<string>("");
+  const [deadlineBefore, setDeadlineBefore] = useState<string>("");
 
   const { data: me } = useGetMe({ query: { retry: false, queryKey: getGetMeQueryKey() } });
 
@@ -29,12 +30,14 @@ export default function TasksList() {
     status: status !== "all" ? status : undefined,
     minPayment: minPayment ? Number(minPayment) : undefined,
     maxPayment: maxPayment ? Number(maxPayment) : undefined,
+    deadlineBefore: deadlineBefore ? new Date(deadlineBefore).toISOString() : undefined,
   });
 
   const { data: capabilities } = useListCapabilities();
 
   const hasActiveFilters =
-    Boolean(search) || Boolean(capabilityId) || status !== "all" || Boolean(minPayment) || Boolean(maxPayment);
+    Boolean(search) || Boolean(capabilityId) || status !== "all" ||
+    Boolean(minPayment) || Boolean(maxPayment) || Boolean(deadlineBefore);
 
   function clearFilters() {
     setSearch("");
@@ -42,6 +45,7 @@ export default function TasksList() {
     setStatus("all");
     setMinPayment("");
     setMaxPayment("");
+    setDeadlineBefore("");
   }
 
   return (
@@ -104,12 +108,13 @@ export default function TasksList() {
                   <SelectItem value="submitted">Submitted</SelectItem>
                   <SelectItem value="complete">Complete</SelectItem>
                   <SelectItem value="disputed">Disputed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div className="space-y-2">
               <Label>Min Payment ($)</Label>
               <Input
@@ -132,6 +137,15 @@ export default function TasksList() {
                 value={maxPayment}
                 onChange={(e) => setMaxPayment(e.target.value)}
                 data-testid="input-max-payment"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Deadline Before</Label>
+              <Input
+                type="datetime-local"
+                value={deadlineBefore}
+                onChange={(e) => setDeadlineBefore(e.target.value)}
+                data-testid="input-deadline-before"
               />
             </div>
             {hasActiveFilters && (
