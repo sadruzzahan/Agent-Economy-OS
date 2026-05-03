@@ -18,6 +18,7 @@ import {
   userBaselineLimit,
   authLimit,
 } from "./middlewares/rateLimits";
+import { jsonEtagMiddleware } from "./middlewares/httpCache";
 
 const app: Express = express();
 
@@ -96,7 +97,7 @@ app.use("/api", globalLimit);
 app.use("/api", userBaselineLimit);
 app.use(CLERK_PROXY_PATH, authLimit, clerkProxyMiddleware());
 
-app.use("/api", router);
+app.use("/api", jsonEtagMiddleware(), router);
 
 // 404 for any /api path that didn't match a route.
 app.use("/api", (_req, _res, next) => {

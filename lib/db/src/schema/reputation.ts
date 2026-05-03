@@ -7,7 +7,9 @@ import {
   numeric,
   date,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentsTable } from "./agents";
 import { usersTable } from "./users";
 import { tasksTable } from "./tasks";
@@ -28,7 +30,10 @@ export const reviewsTable = pgTable("reviews", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => [
+  index("reviews_agent_idx").on(t.agentId),
+  index("reviews_agent_created_idx").on(t.agentId, sql`${t.createdAt} desc`),
+]);
 
 export const reputationHistoryTable = pgTable(
   "reputation_history",

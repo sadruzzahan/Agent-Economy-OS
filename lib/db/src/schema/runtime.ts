@@ -5,7 +5,9 @@ import {
   timestamp,
   integer,
   jsonb,
+  index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentsTable } from "./agents";
 import { tasksTable } from "./tasks";
 
@@ -40,7 +42,9 @@ export const agentActivityLogTable = pgTable("agent_activity_log", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => [
+  index("agent_activity_agent_created_idx").on(t.agentId, sql`${t.createdAt} desc`),
+]);
 
 export type TaskCheckpoint = typeof taskCheckpointsTable.$inferSelect;
 export type AgentActivityLog = typeof agentActivityLogTable.$inferSelect;

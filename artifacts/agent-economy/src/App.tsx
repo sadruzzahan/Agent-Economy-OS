@@ -2,7 +2,7 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ClerkProvider, useClerk } from "@clerk/react";
 import { shadesOfPurple } from "@clerk/themes";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { publishableKeyFromHost } from "@/lib/clerk";
 import { getClerkPublishableKey, getClerkProxyUrl } from "@/lib/env";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,26 +11,31 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import SignInPage from "@/pages/sign-in";
 import SignUpPage from "@/pages/sign-up";
-import Dashboard from "@/pages/dashboard";
-import AgentsList from "@/pages/agents/index";
-import MyAgents from "@/pages/agents/mine";
-import NewAgent from "@/pages/agents/new";
-import AgentProfile from "@/pages/agents/[id]";
-import EditAgent from "@/pages/agents/edit";
-import TasksList from "@/pages/tasks/index";
-import NewTask from "@/pages/tasks/new";
-import MyTasks from "@/pages/tasks/mine";
-import TaskDetail from "@/pages/tasks/[id]";
-import Wallet from "@/pages/wallet";
-import Leaderboard from "@/pages/leaderboard";
-import DocsPage from "@/pages/docs";
 import NotFound from "@/pages/not-found";
+
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const AgentsList = lazy(() => import("@/pages/agents/index"));
+const MyAgents = lazy(() => import("@/pages/agents/mine"));
+const NewAgent = lazy(() => import("@/pages/agents/new"));
+const AgentProfile = lazy(() => import("@/pages/agents/[id]"));
+const EditAgent = lazy(() => import("@/pages/agents/edit"));
+const TasksList = lazy(() => import("@/pages/tasks/index"));
+const NewTask = lazy(() => import("@/pages/tasks/new"));
+const MyTasks = lazy(() => import("@/pages/tasks/mine"));
+const TaskDetail = lazy(() => import("@/pages/tasks/[id]"));
+const Wallet = lazy(() => import("@/pages/wallet"));
+const Leaderboard = lazy(() => import("@/pages/leaderboard"));
+const DocsPage = lazy(() => import("@/pages/docs"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      // Per-route hooks can override; these defaults give snappy UX
+      // while preventing thundering refetches.
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
     },
   },
 });
@@ -55,25 +60,27 @@ const basePath = getBasePath();
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/sign-in/*?" component={SignInPage} />
-      <Route path="/sign-up/*?" component={SignUpPage} />
-      <Route path="/dashboard" component={Dashboard} />
-      <Route path="/agents" component={AgentsList} />
-      <Route path="/agents/mine" component={MyAgents} />
-      <Route path="/agents/new" component={NewAgent} />
-      <Route path="/agents/:id/edit" component={EditAgent} />
-      <Route path="/agents/:id" component={AgentProfile} />
-      <Route path="/tasks" component={TasksList} />
-      <Route path="/tasks/new" component={NewTask} />
-      <Route path="/tasks/mine" component={MyTasks} />
-      <Route path="/tasks/:id" component={TaskDetail} />
-      <Route path="/wallet" component={Wallet} />
-      <Route path="/leaderboard" component={Leaderboard} />
-      <Route path="/docs" component={DocsPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<div className="min-h-[60vh]" />}>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/sign-in/*?" component={SignInPage} />
+        <Route path="/sign-up/*?" component={SignUpPage} />
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/agents" component={AgentsList} />
+        <Route path="/agents/mine" component={MyAgents} />
+        <Route path="/agents/new" component={NewAgent} />
+        <Route path="/agents/:id/edit" component={EditAgent} />
+        <Route path="/agents/:id" component={AgentProfile} />
+        <Route path="/tasks" component={TasksList} />
+        <Route path="/tasks/new" component={NewTask} />
+        <Route path="/tasks/mine" component={MyTasks} />
+        <Route path="/tasks/:id" component={TaskDetail} />
+        <Route path="/wallet" component={Wallet} />
+        <Route path="/leaderboard" component={Leaderboard} />
+        <Route path="/docs" component={DocsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

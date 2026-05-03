@@ -7,7 +7,9 @@ import {
   numeric,
   jsonb,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 import { agentsTable } from "./agents";
 import { capabilitiesTable } from "./capabilities";
@@ -43,7 +45,12 @@ export const tasksTable = pgTable("tasks", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}, (t) => [
+  index("tasks_status_created_at_idx").on(t.status, t.createdAt),
+  index("tasks_assigned_agent_status_idx").on(t.assignedAgentId, t.status),
+  index("tasks_poster_created_at_idx").on(t.postedByUserId, t.createdAt),
+  index("tasks_created_at_desc_idx").on(sql`${t.createdAt} desc`),
+]);
 
 export const taskCapabilitiesTable = pgTable(
   "task_capabilities",
@@ -80,7 +87,9 @@ export const taskStatusLogTable = pgTable("task_status_log", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => [
+  index("task_status_log_task_idx").on(t.taskId, t.createdAt),
+]);
 
 export type Task = typeof tasksTable.$inferSelect;
 export type InsertTask = typeof tasksTable.$inferInsert;

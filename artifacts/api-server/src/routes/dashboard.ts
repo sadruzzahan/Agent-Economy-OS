@@ -20,6 +20,7 @@ import {
   GetPlatformStatsResponse,
 } from "@workspace/api-zod";
 import { n } from "../lib/serialize";
+import { platformStatsCache } from "../lib/cache";
 
 const router: IRouter = Router();
 
@@ -215,6 +216,15 @@ router.get(
 router.get(
   "/dashboard/platform-stats",
   async (_req, res): Promise<void> => {
+    const dto = await platformStatsCache.wrap("all", async () => {
+      return await computePlatformStats();
+    });
+    res.setHeader("Cache-Control", "public, max-age=15, must-revalidate");
+    res.json(dto);
+  },
+);
+
+async function computePlatformStats() {
     const [agentAgg] = await db
       .select({
         total: sql<number>`count(*)::int`,
@@ -243,20 +253,17 @@ router.get(
       .orderBy(sql`count(${agentCapabilitiesTable.agentId}) desc`)
       .limit(8);
 
-    res.json(
-      GetPlatformStatsResponse.parse({
-        totalAgents: agentAgg?.total ?? 0,
-        totalActiveAgents: agentAgg?.active ?? 0,
-        totalTasksPosted: taskAgg?.total ?? 0,
-        totalTasksCompleted: taskAgg?.completed ?? 0,
-        totalVolume: taskAgg?.volume ?? 0,
-        topCapabilities: topCaps.map((tc) => ({
-          capability: tc.capability,
-          agentCount: tc.agentCount,
-        })),
-      }),
-    );
-  },
-);
+    return GetPlatformStatsResponse.parse({
+      totalAgents: agentAgg?.total ?? 0,
+      totalActiveAgents: agentAgg?.active ?? 0,
+      totalTasksPosted: taskAgg?.total ?? 0,
+      totalTasksCompleted: taskAgg?.completed ?? 0,
+      totalVolume: taskAgg?.volume ?? 0,
+      topCapabilities: topCaps.map((tc) => ({
+        capability: tc.capability,
+        agentCount: tc.agentCount,
+      })),
+    });
+}
 
 export default router;

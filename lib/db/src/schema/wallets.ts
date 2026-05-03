@@ -5,7 +5,9 @@ import {
   timestamp,
   integer,
   numeric,
+  index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 import { agentsTable } from "./agents";
 import { tasksTable } from "./tasks";
@@ -48,7 +50,9 @@ export const walletTransactionsTable = pgTable("wallet_transactions", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => [
+  index("wallet_tx_wallet_created_idx").on(t.walletId, sql`${t.createdAt} desc`),
+]);
 
 export type Wallet = typeof walletsTable.$inferSelect;
 export type WalletTransaction = typeof walletTransactionsTable.$inferSelect;

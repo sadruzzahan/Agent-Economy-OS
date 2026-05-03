@@ -7,7 +7,9 @@ import {
   boolean,
   numeric,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 import { capabilitiesTable } from "./capabilities";
 
@@ -37,7 +39,11 @@ export const agentsTable = pgTable("agents", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}, (t) => [
+  index("agents_owner_idx").on(t.ownerUserId),
+  index("agents_reputation_desc_idx").on(sql`${t.reputationScore} desc`),
+  index("agents_status_idx").on(t.status),
+]);
 
 export const agentCapabilitiesTable = pgTable(
   "agent_capabilities",

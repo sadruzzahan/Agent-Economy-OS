@@ -16,6 +16,7 @@ import {
 } from "@workspace/db";
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
 import { recalculateAgentReputation } from "../lib/reputation";
+import { invalidateAggregateCaches } from "../lib/cache";
 import { getAuth } from "@clerk/express";
 import { audit } from "../lib/audit";
 import {
@@ -96,6 +97,74 @@ async function buildTaskSummary(t: typeof tasksTable.$inferSelect) {
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
   };
+}
+
+async function buildTaskSummariesBatch(
+  tasks: Array<typeof tasksTable.$inferSelect>,
+) {
+  if (tasks.length === 0) return [];
+  const taskIds = tasks.map((t) => t.id);
+  const posterIds = [...new Set(tasks.map((t) => t.postedByUserId))];
+  const agentIds = [
+    ...new Set(
+      tasks
+        .map((t) => t.assignedAgentId)
+        .filter((id): id is number => id != null),
+    ),
+  ];
+  const [posters, agents, taskCaps] = await Promise.all([
+    db.select().from(usersTable).where(inArray(usersTable.id, posterIds)),
+    agentIds.length
+      ? db.select().from(agentsTable).where(inArray(agentsTable.id, agentIds))
+      : Promise.resolve([] as Array<typeof agentsTable.$inferSelect>),
+    db
+      .select({
+        taskId: taskCapabilitiesTable.taskId,
+        capabilityId: capabilitiesTable.id,
+        slug: capabilitiesTable.slug,
+        name: capabilitiesTable.name,
+      })
+      .from(taskCapabilitiesTable)
+      .innerJoin(
+        capabilitiesTable,
+        eq(taskCapabilitiesTable.capabilityId, capabilitiesTable.id),
+      )
+      .where(inArray(taskCapabilitiesTable.taskId, taskIds)),
+  ]);
+  const postersById = new Map(posters.map((p) => [p.id, p]));
+  const agentsById = new Map(agents.map((a) => [a.id, a]));
+  const capsByTask = new Map<number, typeof taskCaps>();
+  for (const c of taskCaps) {
+    const arr = capsByTask.get(c.taskId) ?? [];
+    arr.push(c);
+    capsByTask.set(c.taskId, arr);
+  }
+  return tasks.map((t) => {
+    const poster = postersById.get(t.postedByUserId);
+    const agent = t.assignedAgentId ? agentsById.get(t.assignedAgentId) : null;
+    const caps = capsByTask.get(t.id) ?? [];
+    return {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      paymentAmount: n(t.paymentAmount),
+      deadline: t.deadline ? t.deadline.toISOString() : null,
+      postedByUserId: t.postedByUserId,
+      postedByDisplayName: poster?.displayName ?? null,
+      assignedAgentId: t.assignedAgentId,
+      assignedAgentName: agent?.name ?? null,
+      capabilityRequirements: caps.map((c) => ({
+        capabilityId: c.capabilityId,
+        slug: c.slug,
+        name: c.name,
+        verified: false,
+        verifiedScore: null,
+      })),
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    };
+  });
 }
 
 async function buildTaskDetail(t: typeof tasksTable.$inferSelect) {
@@ -198,12 +267,20 @@ router.get("/tasks", async (req, res): Promise<void> => {
     }
     conditions.push(inArray(tasksTable.id, ids));
   }
+  const limit = Math.min(
+    100,
+    Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+  );
+  const offset = Math.max(0, parseInt(String(req.query.offset ?? "0"), 10) || 0);
+
   const rows = await db
     .select()
     .from(tasksTable)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(tasksTable.createdAt));
-  const dtos = await Promise.all(rows.map((r) => buildTaskSummary(r)));
+    .orderBy(desc(tasksTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+  const dtos = await buildTaskSummariesBatch(rows);
   res.json(ListTasksResponse.parse(dtos));
 });
 
@@ -300,6 +377,7 @@ router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> 
     targetId: task.id,
     after: { title, paymentAmount, capabilityIds },
   });
+  invalidateAggregateCaches();
   res.status(201).json(dto);
 });
 

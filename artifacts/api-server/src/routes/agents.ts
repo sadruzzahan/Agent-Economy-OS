@@ -16,6 +16,7 @@ import {
 } from "@workspace/db";
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
 import { recalculateAgentReputation, computeReputationScore } from "../lib/reputation";
+import { invalidateAggregateCaches } from "../lib/cache";
 import { getAuth } from "@clerk/express";
 import { audit } from "../lib/audit";
 import { agentKeyLimit } from "../middlewares/rateLimits";
@@ -192,13 +193,21 @@ router.get("/agents", async (req: Request, res): Promise<void> => {
     conditions.push(inArray(agentsTable.id, ids));
   }
 
+  const limit = Math.min(
+    100,
+    Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+  );
+  const offset = Math.max(0, parseInt(String(req.query.offset ?? "0"), 10) || 0);
+
   const rows = await db
     .select()
     .from(agentsTable)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(agentsTable.reputationScore));
+    .orderBy(desc(agentsTable.reputationScore))
+    .limit(limit)
+    .offset(offset);
 
-  const dtos = await Promise.all(rows.map((r) => buildAgentDto(r)));
+  const dtos = await buildAgentDtosBatch(rows);
   res.json(ListAgentsResponse.parse(dtos));
 });
 
@@ -260,6 +269,7 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
       capabilityIds,
     },
   });
+  invalidateAggregateCaches();
   res.status(201).json({
     agent: dto,
     apiKey: apiKey.plain,
@@ -614,5 +624,118 @@ router.get(
   },
 );
 
-export { buildAgentDto };
+/**
+ * Batched version of buildAgentDto: replaces N*5 sequential queries
+ * with 5 single queries that load owners, capabilities, wallets, task
+ * counts and review aggregates for the entire input set.
+ */
+async function buildAgentDtosBatch(
+  agents: Array<typeof agentsTable.$inferSelect>,
+) {
+  if (agents.length === 0) return [];
+  const agentIds = agents.map((a) => a.id);
+  const ownerIds = [...new Set(agents.map((a) => a.ownerUserId))];
+
+  const [owners, caps, wallets, taskCounts, ratingAggs] = await Promise.all([
+    db.select().from(usersTable).where(inArray(usersTable.id, ownerIds)),
+    db
+      .select({
+        agentId: agentCapabilitiesTable.agentId,
+        capabilityId: capabilitiesTable.id,
+        slug: capabilitiesTable.slug,
+        name: capabilitiesTable.name,
+        verified: agentCapabilitiesTable.verified,
+        verifiedScore: agentCapabilitiesTable.verifiedScore,
+      })
+      .from(agentCapabilitiesTable)
+      .innerJoin(
+        capabilitiesTable,
+        eq(agentCapabilitiesTable.capabilityId, capabilitiesTable.id),
+      )
+      .where(inArray(agentCapabilitiesTable.agentId, agentIds)),
+    db.select().from(walletsTable).where(inArray(walletsTable.agentId, agentIds)),
+    db
+      .select({
+        agentId: tasksTable.assignedAgentId,
+        completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'complete')::int`,
+        inProgress: sql<number>`count(*) filter (where ${tasksTable.status} in ('assigned','in_progress','submitted'))::int`,
+        disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'agent_fault')::int`,
+        totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} in ('in_progress','submitted','complete','disputed') and not (${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'poster_fault'))::int`,
+      })
+      .from(tasksTable)
+      .where(inArray(tasksTable.assignedAgentId, agentIds))
+      .groupBy(tasksTable.assignedAgentId),
+    db
+      .select({
+        agentId: reviewsTable.agentId,
+        avgRating: sql<number>`coalesce(avg(${reviewsTable.rating}), 0)::float`,
+      })
+      .from(reviewsTable)
+      .where(inArray(reviewsTable.agentId, agentIds))
+      .groupBy(reviewsTable.agentId),
+  ]);
+
+  const ownersById = new Map(owners.map((o) => [o.id, o]));
+  const capsByAgent = new Map<number, typeof caps>();
+  for (const c of caps) {
+    const arr = capsByAgent.get(c.agentId) ?? [];
+    arr.push(c);
+    capsByAgent.set(c.agentId, arr);
+  }
+  const walletByAgent = new Map<number, (typeof wallets)[number]>();
+  for (const w of wallets) if (w.agentId != null) walletByAgent.set(w.agentId, w);
+  const countsByAgent = new Map(
+    taskCounts.filter((c) => c.agentId != null).map((c) => [c.agentId as number, c]),
+  );
+  const ratingByAgent = new Map(ratingAggs.map((r) => [r.agentId, r.avgRating]));
+
+  return agents.map((agentRow) => {
+    const owner = ownersById.get(agentRow.ownerUserId);
+    const aCaps = capsByAgent.get(agentRow.id) ?? [];
+    const wallet = walletByAgent.get(agentRow.id);
+    const counts = countsByAgent.get(agentRow.id);
+    const taskCountsObj = {
+      completed: counts?.completed ?? 0,
+      disputed: counts?.disputed ?? 0,
+      totalAssigned: counts?.totalAssigned ?? 0,
+    };
+    const avgRating = ratingByAgent.get(agentRow.id) ?? 0;
+    const { breakdown: scoreBreakdown } = computeReputationScore(
+      taskCountsObj,
+      avgRating,
+    );
+    return {
+      id: agentRow.id,
+      ownerUserId: agentRow.ownerUserId,
+      ownerDisplayName: owner?.displayName ?? null,
+      name: agentRow.name,
+      handle: agentRow.handle,
+      description: agentRow.description,
+      avatarUrl: agentRow.avatarUrl,
+      status: agentRow.status,
+      capabilities: aCaps.map((c) => ({
+        capabilityId: c.capabilityId,
+        slug: c.slug,
+        name: c.name,
+        verified: c.verified,
+        verifiedScore:
+          c.verifiedScore == null ? null : Number(c.verifiedScore),
+      })),
+      reputationScore: Number(agentRow.reputationScore),
+      tasksCompleted: taskCountsObj.completed,
+      tasksInProgress: counts?.inProgress ?? 0,
+      disputeCount: taskCountsObj.disputed,
+      scoreBreakdown,
+      totalEarned: wallet ? n(wallet.totalEarned) : 0,
+      walletBalance: wallet ? n(wallet.balance) : 0,
+      walletEscrowed: wallet ? n(wallet.escrowed) : 0,
+      lastActiveAt: agentRow.lastActiveAt
+        ? agentRow.lastActiveAt.toISOString()
+        : null,
+      createdAt: agentRow.createdAt.toISOString(),
+    };
+  });
+}
+
+export { buildAgentDto, buildAgentDtosBatch };
 export default router;

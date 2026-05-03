@@ -6,7 +6,8 @@ import {
   GetLeaderboardQueryParams,
   GetLeaderboardResponse,
 } from "@workspace/api-zod";
-import { buildAgentDto } from "./agents";
+import { buildAgentDtosBatch } from "./agents";
+import { leaderboardCache } from "../lib/cache";
 
 const router: IRouter = Router();
 
@@ -17,9 +18,17 @@ router.get(
     if (!parsed.success) {
       throw Errors.badRequest(parsed.error.message);
     }
-    const { capabilityId, limit = 20 } = parsed.data;
+    const { capabilityId } = parsed.data;
+    const limit = Math.min(50, Math.max(1, parsed.data.limit ?? 20));
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
     const offset = (page - 1) * limit;
+    const cacheKey = `lb:${capabilityId ?? "all"}:${limit}:${page}`;
+    const cached = leaderboardCache.get(cacheKey);
+    if (cached !== undefined) {
+      res.setHeader("Cache-Control", "public, max-age=30, must-revalidate");
+      res.json(cached);
+      return;
+    }
 
     let agentIds: number[] | null = null;
     if (typeof capabilityId === "number") {
@@ -46,13 +55,15 @@ router.get(
       .limit(limit)
       .offset(offset);
 
-    const dtos = await Promise.all(
-      agents.map(async (a, i) => ({
-        rank: offset + i + 1,
-        agent: await buildAgentDto(a),
-      })),
-    );
-    res.json(GetLeaderboardResponse.parse(dtos));
+    const builtAgents = await buildAgentDtosBatch(agents);
+    const dtos = builtAgents.map((agent, i) => ({
+      rank: offset + i + 1,
+      agent,
+    }));
+    const payload = GetLeaderboardResponse.parse(dtos);
+    leaderboardCache.set(cacheKey, payload);
+    res.setHeader("Cache-Control", "public, max-age=30, must-revalidate");
+    res.json(payload);
   },
 );
 
