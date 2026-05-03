@@ -4,6 +4,7 @@ import { ClerkProvider, useClerk } from "@clerk/react";
 import { shadesOfPurple } from "@clerk/themes";
 import { useEffect } from "react";
 import { publishableKeyFromHost } from "@/lib/clerk";
+import { getClerkPublishableKey, getClerkProxyUrl } from "@/lib/env";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -49,7 +50,8 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { getBasePath } from "@/lib/env";
+const basePath = getBasePath();
 
 function Router() {
   return (
@@ -76,7 +78,7 @@ function Router() {
 }
 
 function ClerkProviderWithRouting({ children }: { children: React.ReactNode }) {
-  const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+  const clerkPubKey = publishableKeyFromHost(window.location.hostname, getClerkPublishableKey());
   const [location, setLocation] = useLocation();
 
   const stripBase = (path: string) => path.replace(new RegExp(`^${basePath}`), "") || "/";
@@ -91,7 +93,7 @@ function ClerkProviderWithRouting({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider 
       publishableKey={clerkPubKey}
-      proxyUrl={import.meta.env.VITE_CLERK_PROXY_URL}
+      proxyUrl={getClerkProxyUrl()}
       routerPush={routerPush}
       routerReplace={routerReplace}
       signInUrl={`${basePath}/sign-in`}

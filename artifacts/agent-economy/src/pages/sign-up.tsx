@@ -1,7 +1,8 @@
 import { SignUp } from "@clerk/react";
 import { PublicLayout } from "@/components/layout";
 
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { getBasePath } from "@/lib/env";
+const basePath = getBasePath();
 
 export default function SignUpPage() {
   return (

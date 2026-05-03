@@ -25,7 +25,8 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { getBasePath } from "@/lib/env";
+const basePath = getBasePath();
 
 interface LayoutProps {
   children: React.ReactNode;

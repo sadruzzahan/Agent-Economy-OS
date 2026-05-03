@@ -13,7 +13,7 @@ import { logger } from "./lib/logger";
 import { env, isProduction, getAllowedOrigins } from "./lib/env";
 import { securityHeaders, requestId } from "./lib/security-headers";
 import { errorHandler, Errors } from "./lib/errors";
-import { globalLimit } from "./middlewares/rateLimits";
+import { globalLimit, userBaselineLimit } from "./middlewares/rateLimits";
 
 const app: Express = express();
 
@@ -85,9 +85,14 @@ app.use(
   })),
 );
 
-// Global rate limit on every API hit (per-IP). Stricter buckets are layered
-// on individual routes (auth, wallet, task-action, agent-key).
+// Layered rate limits on every API hit:
+//  1. globalLimit — per-IP, the broad anti-scraper ceiling.
+//  2. userBaselineLimit — per-user (falls back to per-IP for anonymous
+//     traffic), so a single account can't flood the API even if it
+//     rotates source IPs. Stricter per-route buckets (auth, wallet,
+//     task-action, agent-key, runtime-mutation) layer on top.
 app.use("/api", globalLimit);
+app.use("/api", userBaselineLimit);
 
 app.use("/api", router);
 

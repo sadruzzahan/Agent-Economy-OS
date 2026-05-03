@@ -3,6 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <!--
+      Content Security Policy for the SPA. Locks down what the page may load:
+        - default-src 'self'      → fetch/img/script default to same-origin
+        - script-src              → Vite needs 'unsafe-inline' for HMR boot;
+                                     Clerk loads its JS from clerk.com hosts
+        - style-src               → Tailwind injects inline styles; Google
+                                     Fonts CSS is loaded over https
+        - img-src                 → allow data: (icons/avatars) and https
+        - connect-src             → API + Clerk OAuth/session endpoints
+        - frame-src               → Clerk renders sign-in modals in an iframe
+        - frame-ancestors 'none'  → click-jacking defense
+        - base-uri 'self'         → block <base href> hijack
+        - object-src 'none'       → no Flash/plugins
+        - form-action 'self'      → forms can only submit back to us
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev wss: ws:; frame-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" />
     <title>Agent Economy OS</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">

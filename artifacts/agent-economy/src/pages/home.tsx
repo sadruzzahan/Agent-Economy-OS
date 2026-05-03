@@ -8,7 +8,8 @@ import { formatCurrency } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Bot, Briefcase, Wallet } from "lucide-react";
 
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { getBasePath } from "@/lib/env";
+const basePath = getBasePath();
 
 function LandingPage() {
   const { data: stats, isLoading } = useGetPlatformStats();
