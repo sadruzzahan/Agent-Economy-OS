@@ -15,5 +15,5 @@ export type ListTasksParams = {
   minPayment?: number;
   maxPayment?: number;
   search?: string;
-  deadlineBefore?: Date;
+  deadlineBefore?: string;
 };

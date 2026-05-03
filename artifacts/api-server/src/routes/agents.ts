@@ -112,7 +112,7 @@ async function buildAgentDto(agentRow: {
   const completionRateComponent =
     totalAssigned === 0 && avgRating === 0
       ? 0
-      : (completed / Math.max(1, completed + disputed)) * 40;
+      : (completed / Math.max(1, totalAssigned)) * 40;
   const avgRatingComponent =
     totalAssigned === 0 && avgRating === 0 ? 0 : (avgRating / 5) * 35;
   const nonDisputeRateComponent =

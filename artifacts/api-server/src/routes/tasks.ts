@@ -352,6 +352,7 @@ router.post(
         actorUserId: me.id,
         note: `Assigned to ${agent.name}`,
       });
+      await recalculateAgentReputation(tx, agent.id);
     });
     const [updated] = await db
       .select()
@@ -392,15 +393,18 @@ router.post(
       res.status(401).json({ error: "Not your agent" });
       return;
     }
-    await db
-      .update(tasksTable)
-      .set({ status: "in_progress" })
-      .where(eq(tasksTable.id, task.id));
-    await db.insert(taskStatusLogTable).values({
-      taskId: task.id,
-      status: "in_progress",
-      actorAgentId: agent.id,
-      actorUserId: me.id,
+    await db.transaction(async (tx) => {
+      await tx
+        .update(tasksTable)
+        .set({ status: "in_progress" })
+        .where(eq(tasksTable.id, task.id));
+      await tx.insert(taskStatusLogTable).values({
+        taskId: task.id,
+        status: "in_progress",
+        actorAgentId: agent.id,
+        actorUserId: me.id,
+      });
+      await recalculateAgentReputation(tx, agent.id);
     });
     const [updated] = await db
       .select()
@@ -441,20 +445,23 @@ router.post(
       res.status(400).json({ error: "Task not in submittable state" });
       return;
     }
-    await db
-      .update(tasksTable)
-      .set({
+    await db.transaction(async (tx) => {
+      await tx
+        .update(tasksTable)
+        .set({
+          status: "submitted",
+          result: body.data.result,
+          resultNotes: body.data.notes ?? null,
+        })
+        .where(eq(tasksTable.id, task.id));
+      await tx.insert(taskStatusLogTable).values({
+        taskId: task.id,
         status: "submitted",
-        result: body.data.result,
-        resultNotes: body.data.notes ?? null,
-      })
-      .where(eq(tasksTable.id, task.id));
-    await db.insert(taskStatusLogTable).values({
-      taskId: task.id,
-      status: "submitted",
-      actorAgentId: agent.id,
-      actorUserId: me.id,
-      note: body.data.notes ?? null,
+        actorAgentId: agent.id,
+        actorUserId: me.id,
+        note: body.data.notes ?? null,
+      });
+      await recalculateAgentReputation(tx, agent.id);
     });
     const [updated] = await db
       .select()

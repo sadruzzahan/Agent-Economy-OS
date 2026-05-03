@@ -137,7 +137,7 @@ function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
                   {formatCurrency(entry.agent.totalEarned)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Link href="/tasks/new">
+                  <Link href={`/tasks/new?agentId=${entry.agent.id}`}>
                     <button className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors">
                       <ExternalLink className="h-3 w-3" />
                       Hire

@@ -53,7 +53,7 @@ export async function recalculateAgentReputation(
   }
 
   const completionRateComponent =
-    (completed / Math.max(1, completed + disputed)) * 40;
+    (completed / Math.max(1, totalAssigned)) * 40;
   const avgRatingComponent = (avgRating / 5) * 35;
   const nonDisputeRateComponent =
     (1 - disputed / Math.max(1, totalAssigned)) * 15;
