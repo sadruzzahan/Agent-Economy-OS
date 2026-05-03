@@ -1,4 +1,5 @@
 export * from "./generated/api";
+export type { ListAgentReviewsParams as ListAgentReviewsQueryParams } from "./generated/types/listAgentReviewsParams";
 export * from "./generated/types/activityItem";
 export * from "./generated/types/activityItemType";
 export * from "./generated/types/agent";
