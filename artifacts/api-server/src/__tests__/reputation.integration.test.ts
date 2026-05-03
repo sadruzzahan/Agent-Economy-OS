@@ -311,6 +311,29 @@ describe("cross-owner hire: task from user A can be assigned to user B's agent",
     expect(afterDisputeResult.breakdown.nonDisputeRate).toBe(baselineResult.breakdown.nonDisputeRate);
   });
 
+  it("assign-only cannot grief agent reputation (assigned state excluded from totalAssigned)", async () => {
+    // Capture brand-new agent score before any assignment
+    const beforeResult = await db.transaction(async (tx) =>
+      recalculateAgentReputation(tx, externalAgentId),
+    );
+    expect(beforeResult.score).toBe(0);
+
+    // A third-party poster assigns the task — agent has NOT started work yet
+    await db
+      .update(tasksTable)
+      .set({ status: "assigned", assignedAgentId: externalAgentId })
+      .where(eq(tasksTable.id, testTaskId));
+
+    const afterAssignResult = await db.transaction(async (tx) =>
+      recalculateAgentReputation(tx, externalAgentId),
+    );
+
+    // Score must be unchanged: assignment alone has zero reputation impact
+    expect(afterAssignResult.score).toBe(beforeResult.score);
+    expect(afterAssignResult.breakdown.completionRate).toBe(beforeResult.breakdown.completionRate);
+    expect(afterAssignResult.breakdown.nonDisputeRate).toBe(beforeResult.breakdown.nonDisputeRate);
+  });
+
   it("resolve-dispute idempotent: same outcome repeated returns 200 (verified at DB layer)", async () => {
     // Set disputed with poster_fault
     await db

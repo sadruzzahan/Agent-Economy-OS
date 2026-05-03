@@ -66,10 +66,11 @@ export async function recalculateAgentReputation(
     .select({
       completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'complete')::int`,
       disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'agent_fault')::int`,
-      // Exclude poster_fault disputes from the denominator so they never
-      // penalise the completion-rate component. Only agent_fault and still-open
-      // disputes (NULL outcome) remain in totalAssigned.
-      totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} != 'open' and not (${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'poster_fault'))::int`,
+      // Only count tasks once the agent has started work (in_progress+) so that
+      // a third-party poster cannot grief an agent's completion-rate by assigning
+      // tasks the agent never accepted. poster_fault disputes are excluded so
+      // agent-favour resolutions don't penalise the denominator either.
+      totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} in ('in_progress','submitted','complete','disputed') and not (${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'poster_fault'))::int`,
     })
     .from(tasksTable)
     .where(eq(tasksTable.assignedAgentId, agentId));
