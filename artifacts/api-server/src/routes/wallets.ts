@@ -110,6 +110,8 @@ router.post(
     const parsed = TopUpBalanceBody.safeParse(req.body);
     if (!parsed.success) throw Errors.badRequest(parsed.error.message);
     const me = req.dbUser!;
+    let toppedUpWalletId: number | null = null;
+    let toppedUpBalanceAfter: number | null = null;
     await db.transaction(async (tx) => {
       await tx
         .update(usersTable)
@@ -133,14 +135,23 @@ router.post(
           balanceAfter: String(newWalletBalance),
           description: "Wallet top-up",
         });
+        toppedUpWalletId = userWallet.id;
+        toppedUpBalanceAfter = newWalletBalance;
       }
     });
 
+    // Audit the wallet by its primary key (not the user id) so the audit
+    // log can be joined cleanly back to wallets and so a user with
+    // multiple wallets in the future is unambiguous.
     await audit(req, {
       action: "wallet.topup",
       targetType: "wallet",
-      targetId: me.id,
-      after: { amount: parsed.data.amount },
+      targetId: toppedUpWalletId,
+      after: {
+        amount: parsed.data.amount,
+        balanceAfter: toppedUpBalanceAfter,
+        userId: me.id,
+      },
     });
 
     const summary = await buildWalletSummary(me.id);
