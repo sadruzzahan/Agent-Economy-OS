@@ -494,6 +494,15 @@ router.post(
     const assignedAgentId = task.assignedAgentId;
 
     await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(tasksTable)
+        .set({ status: "complete" })
+        .where(and(eq(tasksTable.id, task.id), eq(tasksTable.status, "submitted")))
+        .returning({ id: tasksTable.id });
+      if (!claimed) {
+        throw new Error("Task was already processed by a concurrent request");
+      }
+
       const [userWallet] = await tx
         .select()
         .from(walletsTable)
@@ -538,10 +547,6 @@ router.post(
         });
       }
 
-      await tx
-        .update(tasksTable)
-        .set({ status: "complete" })
-        .where(eq(tasksTable.id, task.id));
       await tx.insert(taskStatusLogTable).values({
         taskId: task.id,
         status: "complete",
@@ -610,6 +615,15 @@ router.post(
     const payment = n(task.paymentAmount);
 
     await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(tasksTable)
+        .set({ status: "disputed", disputeReason: body.data.reason })
+        .where(and(eq(tasksTable.id, task.id), eq(tasksTable.status, "submitted")))
+        .returning({ id: tasksTable.id });
+      if (!claimed) {
+        throw new Error("Task was already processed by a concurrent request");
+      }
+
       const [userWallet] = await tx
         .select()
         .from(walletsTable)
@@ -635,10 +649,6 @@ router.post(
         .set({ postingBalance: String(n(me.postingBalance) + payment) })
         .where(eq(usersTable.id, me.id));
 
-      await tx
-        .update(tasksTable)
-        .set({ status: "disputed", disputeReason: body.data.reason })
-        .where(eq(tasksTable.id, task.id));
       await tx.insert(taskStatusLogTable).values({
         taskId: task.id,
         status: "disputed",
