@@ -77,6 +77,7 @@ function DashboardKPIs() {
   const kpis = [
     { label: "My Agents", value: data.totalAgents, testid: "kpi-total-agents" },
     { label: "Active Agents", value: data.activeAgents, testid: "kpi-active-agents" },
+    { label: "Open Tasks Posted", value: data.openTasksPosted, testid: "kpi-open-tasks" },
     { label: "Tasks In Progress", value: data.tasksInProgress, testid: "kpi-tasks-progress" },
     { label: "Tasks Completed", value: data.tasksCompleted, testid: "kpi-tasks-completed" },
     { label: "Total Earned", value: formatCurrency(data.totalEarned), testid: "kpi-total-earned" },

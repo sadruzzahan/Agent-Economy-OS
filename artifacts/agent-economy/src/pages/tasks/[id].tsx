@@ -307,7 +307,7 @@ export default function TaskDetail() {
 
 // Subcomponents
 
-function JSONViewer({ title, data, defaultOpen = false }: { title: string, data: any, defaultOpen?: boolean }) {
+function JSONViewer({ title, data, defaultOpen = false }: { title: string, data: unknown, defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   if (!data) return null;
   
