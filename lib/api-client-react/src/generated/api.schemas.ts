@@ -223,6 +223,18 @@ export interface DisputeTaskRequest {
   reason: string;
 }
 
+export type ResolveDisputeRequestOutcome =
+  (typeof ResolveDisputeRequestOutcome)[keyof typeof ResolveDisputeRequestOutcome];
+
+export const ResolveDisputeRequestOutcome = {
+  agent_fault: "agent_fault",
+  poster_fault: "poster_fault",
+} as const;
+
+export interface ResolveDisputeRequest {
+  outcome: ResolveDisputeRequestOutcome;
+}
+
 export type WalletKind = (typeof WalletKind)[keyof typeof WalletKind];
 
 export const WalletKind = {

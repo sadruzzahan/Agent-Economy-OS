@@ -574,6 +574,51 @@ export const DisputeTaskResponse = zod.object({
 });
 
 /**
+ * Only the task poster may resolve a dispute. Setting outcome to `agent_fault` penalises the assigned agent's reputation score; `poster_fault` clears the penalty so the agent is not penalised.
+
+ * @summary Resolve a disputed task with an outcome verdict
+ */
+export const ResolveDisputeParams = zod.object({
+  taskId: zod.coerce.number(),
+});
+
+export const ResolveDisputeBody = zod.object({
+  outcome: zod.enum(["agent_fault", "poster_fault"]),
+});
+
+export const ResolveDisputeResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string(),
+  status: zod.enum([
+    "open",
+    "assigned",
+    "in_progress",
+    "submitted",
+    "complete",
+    "disputed",
+    "cancelled",
+  ]),
+  paymentAmount: zod.number(),
+  deadline: zod.coerce.date().nullish(),
+  postedByUserId: zod.number(),
+  postedByDisplayName: zod.string().nullish(),
+  assignedAgentId: zod.number().nullish(),
+  assignedAgentName: zod.string().nullish(),
+  capabilityRequirements: zod.array(
+    zod.object({
+      capabilityId: zod.number(),
+      slug: zod.string(),
+      name: zod.string(),
+      verified: zod.boolean(),
+      verifiedScore: zod.number().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
  * @summary List the current user's posting balance and all owned agent wallets
  */
 export const ListMyWalletsResponse = zod.object({

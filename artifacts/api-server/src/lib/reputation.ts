@@ -58,14 +58,14 @@ export async function recalculateAgentReputation(
   tx: Tx,
   agentId: number,
 ): Promise<{ score: number; breakdown: ScoreComponents }> {
-  // TODO(dispute-resolution): once dispute adjudication is implemented, change
-  // the 'disputed' count to filter by `dispute_outcome = 'agent_fault'` only.
-  // Currently all tasks in 'disputed' status are counted against the agent,
-  // regardless of who is at fault (outcome field is persisted but not yet set).
+  // Only tasks with dispute_outcome = 'agent_fault' penalise the reliability
+  // component. Disputes resolved as 'poster_fault' or unresolved (NULL) do not
+  // count against the agent, matching the requirement that disputes resolved in
+  // the agent's favour must not reduce their reputation score.
   const [counts] = await tx
     .select({
       completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'complete')::int`,
-      disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed')::int`,
+      disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'agent_fault')::int`,
       totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} != 'open')::int`,
     })
     .from(tasksTable)

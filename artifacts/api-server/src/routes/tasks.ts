@@ -35,6 +35,9 @@ import {
   DisputeTaskBody,
   DisputeTaskParams,
   DisputeTaskResponse,
+  ResolveDisputeBody,
+  ResolveDisputeParams,
+  ResolveDisputeResponse,
 } from "@workspace/api-zod";
 import { n } from "../lib/serialize";
 
@@ -668,6 +671,62 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
     res.json(DisputeTaskResponse.parse(await buildTaskSummary(updated!)));
+  },
+);
+
+router.post(
+  "/tasks/:taskId/resolve-dispute",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const params = ResolveDisputeParams.safeParse(req.params);
+    const body = ResolveDisputeBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+    const me = req.dbUser!;
+    const [task] = await db
+      .select()
+      .from(tasksTable)
+      .where(eq(tasksTable.id, params.data.taskId));
+    if (!task) {
+      res.status(404).json({ error: "Task not found" });
+      return;
+    }
+    if (task.postedByUserId !== me.id) {
+      res.status(401).json({ error: "Only the task poster can resolve a dispute" });
+      return;
+    }
+    if (task.status !== "disputed") {
+      res.status(400).json({ error: "Task is not in disputed state" });
+      return;
+    }
+    if (task.disputeOutcome !== null) {
+      res.status(400).json({ error: "Dispute has already been resolved" });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(tasksTable)
+        .set({ disputeOutcome: body.data.outcome })
+        .where(eq(tasksTable.id, task.id));
+      await tx.insert(taskStatusLogTable).values({
+        taskId: task.id,
+        status: "disputed",
+        actorUserId: me.id,
+        note: `Dispute resolved: ${body.data.outcome}`,
+      });
+      if (task.assignedAgentId != null) {
+        await recalculateAgentReputation(tx, task.assignedAgentId);
+      }
+    });
+
+    const [updated] = await db
+      .select()
+      .from(tasksTable)
+      .where(eq(tasksTable.id, task.id));
+    res.json(ResolveDisputeResponse.parse(await buildTaskSummary(updated!)));
   },
 );
 

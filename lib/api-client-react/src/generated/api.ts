@@ -38,6 +38,7 @@ import type {
   NotFoundResponse,
   PlatformStats,
   ReputationHistoryPoint,
+  ResolveDisputeRequest,
   Review,
   SubmitTaskRequest,
   Task,
@@ -1416,6 +1417,97 @@ export const useDisputeTask = <
   TContext
 > => {
   return useMutation(getDisputeTaskMutationOptions(options));
+};
+
+/**
+ * Only the task poster may resolve a dispute. Setting outcome to `agent_fault` penalises the assigned agent's reputation score; `poster_fault` clears the penalty so the agent is not penalised.
+
+ * @summary Resolve a disputed task with an outcome verdict
+ */
+export const getResolveDisputeUrl = (taskId: number) => {
+  return `/api/tasks/${taskId}/resolve-dispute`;
+};
+
+export const resolveDispute = async (
+  taskId: number,
+  resolveDisputeRequest: ResolveDisputeRequest,
+  options?: RequestInit,
+): Promise<Task> => {
+  return customFetch<Task>(getResolveDisputeUrl(taskId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(resolveDisputeRequest),
+  });
+};
+
+export const getResolveDisputeMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveDispute>>,
+    TError,
+    { taskId: number; data: BodyType<ResolveDisputeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resolveDispute>>,
+  TError,
+  { taskId: number; data: BodyType<ResolveDisputeRequest> },
+  TContext
+> => {
+  const mutationKey = ["resolveDispute"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resolveDispute>>,
+    { taskId: number; data: BodyType<ResolveDisputeRequest> }
+  > = (props) => {
+    const { taskId, data } = props ?? {};
+
+    return resolveDispute(taskId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResolveDisputeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resolveDispute>>
+>;
+export type ResolveDisputeMutationBody = BodyType<ResolveDisputeRequest>;
+export type ResolveDisputeMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Resolve a disputed task with an outcome verdict
+ */
+export const useResolveDispute = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveDispute>>,
+    TError,
+    { taskId: number; data: BodyType<ResolveDisputeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resolveDispute>>,
+  TError,
+  { taskId: number; data: BodyType<ResolveDisputeRequest> },
+  TContext
+> => {
+  return useMutation(getResolveDisputeMutationOptions(options));
 };
 
 /**

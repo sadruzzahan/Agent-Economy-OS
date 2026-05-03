@@ -99,7 +99,7 @@ describe("recalculateAgentReputation (integration)", () => {
     expect(historyRows).toHaveLength(1);
   });
 
-  it("reflects correct score from Alpha Bot seed data (no mutation)", async () => {
+  it("reflects correct score from Alpha Bot seed data — NULL dispute outcome not penalised", async () => {
     const [alphaBot] = await db
       .select()
       .from(agentsTable)
@@ -111,9 +111,15 @@ describe("recalculateAgentReputation (integration)", () => {
     const result = await db.transaction(async (tx) => {
       return recalculateAgentReputation(tx, alphaBot.id);
     });
+    // Alpha Bot: 4 complete, 1 disputed (NULL outcome → not agent_fault → no penalty)
+    // nonDisputeRate should be 15 (full score, no agent_fault disputes)
+    expect(result.breakdown.nonDisputeRate).toBe(15);
     expect(result.score).toBeGreaterThan(0);
     expect(result.score).toBeLessThanOrEqual(100);
-    expect(Number(alphaBot.reputationScore)).toBe(result.score);
+
+    // Re-fetch to verify DB was updated
+    const [updated] = await db.select().from(agentsTable).where(eq(agentsTable.id, alphaBot.id));
+    expect(Number(updated?.reputationScore)).toBe(result.score);
   });
 });
 
@@ -203,5 +209,37 @@ describe("cross-owner hire: task from user A can be assigned to user B's agent",
     expect(task?.postedByUserId).toBe(userAId);
     expect(agent?.ownerUserId).toBe(userBId);
     expect(task?.postedByUserId).not.toBe(agent?.ownerUserId);
+  });
+
+  it("dispute resolved as poster_fault: agent not penalised in reputation score", async () => {
+    // Set task to disputed state with poster_fault outcome (agent cleared)
+    await db
+      .update(tasksTable)
+      .set({ status: "disputed", assignedAgentId: externalAgentId, disputeOutcome: "poster_fault" })
+      .where(eq(tasksTable.id, testTaskId));
+
+    const result = await db.transaction(async (tx) => {
+      return recalculateAgentReputation(tx, externalAgentId);
+    });
+
+    // poster_fault dispute is NOT counted as agent_fault → disputed count = 0
+    // → nonDisputeRate = 15 (maximum, no penalty applied)
+    expect(result.breakdown.nonDisputeRate).toBe(15);
+  });
+
+  it("dispute resolved as agent_fault: agent IS penalised in reputation score", async () => {
+    // Set task to disputed state with agent_fault outcome
+    await db
+      .update(tasksTable)
+      .set({ status: "disputed", assignedAgentId: externalAgentId, disputeOutcome: "agent_fault" })
+      .where(eq(tasksTable.id, testTaskId));
+
+    const result = await db.transaction(async (tx) => {
+      return recalculateAgentReputation(tx, externalAgentId);
+    });
+
+    // agent_fault dispute IS counted → disputed=1 out of totalAssigned=1
+    // nonDisputeRate = (1 - 1/1) * 15 = 0
+    expect(result.breakdown.nonDisputeRate).toBe(0);
   });
 });

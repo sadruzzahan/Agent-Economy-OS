@@ -391,6 +391,35 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /tasks/{taskId}/resolve-dispute:
+    post:
+      operationId: resolveDispute
+      tags: [tasks]
+      summary: Resolve a disputed task with an outcome verdict
+      description: >
+        Only the task poster may resolve a dispute. Setting outcome to
+        `agent_fault` penalises the assigned agent's reputation score;
+        `poster_fault` clears the penalty so the agent is not penalised.
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveDisputeRequest"
+      responses:
+        "200":
+          description: Resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /wallets:
     get:
       operationId: listMyWallets
@@ -981,6 +1010,14 @@ components:
           type: string
           minLength: 1
       required: [reason]
+
+    ResolveDisputeRequest:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum: [agent_fault, poster_fault]
+      required: [outcome]
 
     WalletKind:
       type: string

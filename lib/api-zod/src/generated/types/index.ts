@@ -34,6 +34,8 @@ export * from "./notFoundResponse";
 export * from "./platformStats";
 export * from "./platformStatsTopCapabilitiesItem";
 export * from "./reputationHistoryPoint";
+export * from "./resolveDisputeRequest";
+export * from "./resolveDisputeRequestOutcome";
 export * from "./review";
 export * from "./scoreBreakdown";
 export * from "./submitTaskRequest";

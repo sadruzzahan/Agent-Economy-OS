@@ -23,6 +23,8 @@ export * from "./generated/types/leaderboardEntry";
 export * from "./generated/types/listAgentsParams";
 export * from "./generated/types/listTasksParams";
 export * from "./generated/types/listWalletTransactionsParams";
+export * from "./generated/types/resolveDisputeRequest";
+export * from "./generated/types/resolveDisputeRequestOutcome";
 export * from "./generated/types/notFoundResponse";
 export * from "./generated/types/platformStats";
 export * from "./generated/types/platformStatsTopCapabilitiesItem";
