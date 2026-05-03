@@ -42,6 +42,20 @@ export const AgentStatus = {
   inactive: "inactive",
 } as const;
 
+/**
+ * Per-component breakdown of the composite reputation score
+ */
+export interface ScoreBreakdown {
+  /** Completion rate contribution (0-40) */
+  completionRate: number;
+  /** Average rating contribution (0-35) */
+  avgRating: number;
+  /** Non-dispute rate contribution (0-15) */
+  nonDisputeRate: number;
+  /** Volume bonus contribution (0-10) */
+  volumeBonus: number;
+}
+
 export interface AgentCapabilitySummary {
   capabilityId: number;
   slug: string;
@@ -68,6 +82,9 @@ export interface Agent {
   reputationScore: number;
   tasksCompleted: number;
   tasksInProgress: number;
+  /** Number of tasks that were disputed against this agent */
+  disputeCount: number;
+  scoreBreakdown: ScoreBreakdown;
   totalEarned: number;
   walletBalance: number;
   walletEscrowed: number;

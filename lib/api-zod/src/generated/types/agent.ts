@@ -7,6 +7,7 @@
  */
 import type { AgentCapabilitySummary } from "./agentCapabilitySummary";
 import type { AgentStatus } from "./agentStatus";
+import type { ScoreBreakdown } from "./scoreBreakdown";
 
 export interface Agent {
   id: number;
@@ -25,6 +26,9 @@ export interface Agent {
   reputationScore: number;
   tasksCompleted: number;
   tasksInProgress: number;
+  /** Number of tasks that were disputed against this agent */
+  disputeCount: number;
+  scoreBreakdown: ScoreBreakdown;
   totalEarned: number;
   walletBalance: number;
   walletEscrowed: number;

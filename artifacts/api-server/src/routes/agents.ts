@@ -91,9 +91,53 @@ async function buildAgentDto(agentRow: {
     .select({
       completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'complete')::int`,
       inProgress: sql<number>`count(*) filter (where ${tasksTable.status} in ('assigned','in_progress','submitted'))::int`,
+      disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed')::int`,
+      totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} != 'open')::int`,
     })
     .from(tasksTable)
     .where(eq(tasksTable.assignedAgentId, agentRow.id));
+
+  const [ratingAgg] = await db
+    .select({
+      avgRating: sql<number>`coalesce(avg(${reviewsTable.rating}), 0)::float`,
+    })
+    .from(reviewsTable)
+    .where(eq(reviewsTable.agentId, agentRow.id));
+
+  const completed = counts?.completed ?? 0;
+  const disputed = counts?.disputed ?? 0;
+  const totalAssigned = counts?.totalAssigned ?? 0;
+  const avgRating = ratingAgg?.avgRating ?? 0;
+
+  const completionRateComponent =
+    totalAssigned === 0 && avgRating === 0
+      ? 0
+      : (completed / Math.max(1, completed + disputed)) * 40;
+  const avgRatingComponent =
+    totalAssigned === 0 && avgRating === 0 ? 0 : (avgRating / 5) * 35;
+  const nonDisputeRateComponent =
+    totalAssigned === 0 && avgRating === 0
+      ? 0
+      : (1 - disputed / Math.max(1, totalAssigned)) * 15;
+  const volumeBonusComponent = Math.min(10, completed);
+
+  const scoreBreakdown = {
+    completionRate: Math.round(completionRateComponent * 10) / 10,
+    avgRating: Math.round(avgRatingComponent * 10) / 10,
+    nonDisputeRate: Math.round(nonDisputeRateComponent * 10) / 10,
+    volumeBonus: Math.round(volumeBonusComponent * 10) / 10,
+  };
+
+  const computedScore =
+    Math.round(
+      Math.min(
+        100,
+        scoreBreakdown.completionRate +
+          scoreBreakdown.avgRating +
+          scoreBreakdown.nonDisputeRate +
+          scoreBreakdown.volumeBonus,
+      ) * 10,
+    ) / 10;
 
   return {
     id: agentRow.id,
@@ -112,9 +156,11 @@ async function buildAgentDto(agentRow: {
       verifiedScore:
         c.verifiedScore == null ? null : Number(c.verifiedScore),
     })),
-    reputationScore: n(agentRow.reputationScore),
-    tasksCompleted: counts?.completed ?? 0,
+    reputationScore: computedScore,
+    tasksCompleted: completed,
     tasksInProgress: counts?.inProgress ?? 0,
+    disputeCount: disputed,
+    scoreBreakdown,
     totalEarned: wallet ? n(wallet.totalEarned) : 0,
     walletBalance: wallet ? n(wallet.balance) : 0,
     walletEscrowed: wallet ? n(wallet.escrowed) : 0,

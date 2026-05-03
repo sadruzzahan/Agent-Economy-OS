@@ -2,12 +2,44 @@ import { PublicLayout } from "@/components/layout";
 import { useParams } from "wouter";
 import { useGetAgent, useGetAgentReputationHistory, useListAgentReviews, getGetAgentQueryKey, getGetAgentReputationHistoryQueryKey, getListAgentReviewsQueryKey } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { CapabilityBadges } from "@/components/capability-badges";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatReputation, formatDate } from "@/lib/format";
 import { AgentStatusBadge } from "@/components/status-badge";
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { Sparkles } from "lucide-react";
+
+function ScoreBar({
+  label,
+  value,
+  max,
+  barClass,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  barClass: string;
+}) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium tabular-nums">
+          {value.toFixed(1)}<span className="text-muted-foreground">/{max}</span>
+        </span>
+      </div>
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${barClass}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function AgentProfile() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +76,8 @@ export default function AgentProfile() {
     );
   }
 
+  const isNewAgent = agent.tasksCompleted < 3;
+
   return (
     <PublicLayout>
       <div className="container mx-auto p-4 md:p-8 max-w-5xl space-y-8">
@@ -63,7 +97,13 @@ export default function AgentProfile() {
                 <h1 className="text-4xl font-bold text-foreground" data-testid="text-agent-name">{agent.name}</h1>
                 <p className="text-lg text-muted-foreground font-medium">@{agent.handle}</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                {isNewAgent && (
+                  <Badge variant="secondary" className="gap-1.5 text-sm px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    New Agent
+                  </Badge>
+                )}
                 <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-4 py-2 rounded-lg flex items-center gap-2">
                   <span className="text-xl font-bold">{formatReputation(agent.reputationScore)}</span>
                   <span className="text-sm uppercase tracking-wide">Rep</span>
@@ -203,11 +243,41 @@ export default function AgentProfile() {
                     <div className="text-2xl font-semibold">{agent.tasksCompleted}</div>
                   </div>
                   <div className="space-y-1 bg-muted/50 p-3 rounded-md">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">In Progress</div>
-                    <div className="text-2xl font-semibold">{agent.tasksInProgress}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Disputed</div>
+                    <div className="text-2xl font-semibold text-red-500">{agent.disputeCount}</div>
                   </div>
                 </div>
-                <div className="pt-4 border-t border-border">
+
+                {/* Score Breakdown */}
+                <div className="pt-2 border-t border-border space-y-3">
+                  <div className="text-sm font-semibold">Score Breakdown</div>
+                  <ScoreBar
+                    label="Completion Rate"
+                    value={agent.scoreBreakdown.completionRate}
+                    max={40}
+                    barClass="bg-green-500"
+                  />
+                  <ScoreBar
+                    label="Avg Rating"
+                    value={agent.scoreBreakdown.avgRating}
+                    max={35}
+                    barClass="bg-blue-500"
+                  />
+                  <ScoreBar
+                    label="Reliability"
+                    value={agent.scoreBreakdown.nonDisputeRate}
+                    max={15}
+                    barClass="bg-purple-500"
+                  />
+                  <ScoreBar
+                    label="Volume Bonus"
+                    value={agent.scoreBreakdown.volumeBonus}
+                    max={10}
+                    barClass="bg-amber-500"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-border">
                   <div className="text-sm flex justify-between">
                     <span className="text-muted-foreground">Owner</span>
                     <span className="font-medium">{agent.ownerDisplayName || "Unknown"}</span>

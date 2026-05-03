@@ -58,6 +58,21 @@ export const ListAgentsResponseItem = zod.object({
   reputationScore: zod.number().describe("Composite 0-100 reputation score"),
   tasksCompleted: zod.number(),
   tasksInProgress: zod.number(),
+  disputeCount: zod
+    .number()
+    .describe("Number of tasks that were disputed against this agent"),
+  scoreBreakdown: zod
+    .object({
+      completionRate: zod
+        .number()
+        .describe("Completion rate contribution (0-40)"),
+      avgRating: zod.number().describe("Average rating contribution (0-35)"),
+      nonDisputeRate: zod
+        .number()
+        .describe("Non-dispute rate contribution (0-15)"),
+      volumeBonus: zod.number().describe("Volume bonus contribution (0-10)"),
+    })
+    .describe("Per-component breakdown of the composite reputation score"),
   totalEarned: zod.number(),
   walletBalance: zod.number(),
   walletEscrowed: zod.number(),
@@ -104,6 +119,21 @@ export const GetAgentResponse = zod.object({
   reputationScore: zod.number().describe("Composite 0-100 reputation score"),
   tasksCompleted: zod.number(),
   tasksInProgress: zod.number(),
+  disputeCount: zod
+    .number()
+    .describe("Number of tasks that were disputed against this agent"),
+  scoreBreakdown: zod
+    .object({
+      completionRate: zod
+        .number()
+        .describe("Completion rate contribution (0-40)"),
+      avgRating: zod.number().describe("Average rating contribution (0-35)"),
+      nonDisputeRate: zod
+        .number()
+        .describe("Non-dispute rate contribution (0-15)"),
+      volumeBonus: zod.number().describe("Volume bonus contribution (0-10)"),
+    })
+    .describe("Per-component breakdown of the composite reputation score"),
   totalEarned: zod.number(),
   walletBalance: zod.number(),
   walletEscrowed: zod.number(),
@@ -146,6 +176,21 @@ export const UpdateAgentResponse = zod.object({
   reputationScore: zod.number().describe("Composite 0-100 reputation score"),
   tasksCompleted: zod.number(),
   tasksInProgress: zod.number(),
+  disputeCount: zod
+    .number()
+    .describe("Number of tasks that were disputed against this agent"),
+  scoreBreakdown: zod
+    .object({
+      completionRate: zod
+        .number()
+        .describe("Completion rate contribution (0-40)"),
+      avgRating: zod.number().describe("Average rating contribution (0-35)"),
+      nonDisputeRate: zod
+        .number()
+        .describe("Non-dispute rate contribution (0-15)"),
+      volumeBonus: zod.number().describe("Volume bonus contribution (0-10)"),
+    })
+    .describe("Per-component breakdown of the composite reputation score"),
   totalEarned: zod.number(),
   walletBalance: zod.number(),
   walletEscrowed: zod.number(),
@@ -193,7 +238,7 @@ export const ListTasksQueryParams = zod.object({
   minPayment: zod.coerce.number().optional(),
   maxPayment: zod.coerce.number().optional(),
   search: zod.coerce.string().optional(),
-  deadlineBefore: zod.coerce.string().optional(),
+  deadlineBefore: zod.date().optional(),
 });
 
 export const ListTasksResponseItem = zod.object({
@@ -655,6 +700,21 @@ export const GetLeaderboardResponseItem = zod.object({
     reputationScore: zod.number().describe("Composite 0-100 reputation score"),
     tasksCompleted: zod.number(),
     tasksInProgress: zod.number(),
+    disputeCount: zod
+      .number()
+      .describe("Number of tasks that were disputed against this agent"),
+    scoreBreakdown: zod
+      .object({
+        completionRate: zod
+          .number()
+          .describe("Completion rate contribution (0-40)"),
+        avgRating: zod.number().describe("Average rating contribution (0-35)"),
+        nonDisputeRate: zod
+          .number()
+          .describe("Non-dispute rate contribution (0-15)"),
+        volumeBonus: zod.number().describe("Volume bonus contribution (0-10)"),
+      })
+      .describe("Per-component breakdown of the composite reputation score"),
     totalEarned: zod.number(),
     walletBalance: zod.number(),
     walletEscrowed: zod.number(),

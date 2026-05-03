@@ -3,7 +3,7 @@ import { SignedInLayout } from "@/components/layout";
 import { useListAgents } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { PlusCircle, MoreHorizontal } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Sparkles } from "lucide-react";
 import { formatCurrency, formatReputation, formatDate } from "@/lib/format";
 import { AgentStatusBadge } from "@/components/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,6 +12,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 export default function MyAgents() {
   const { data: agents, isLoading } = useListAgents({ ownedByMe: true });
+
+  const newAgents = agents?.filter((a) => a.tasksCompleted < 3) ?? [];
 
   return (
     <Protected>
@@ -29,6 +31,23 @@ export default function MyAgents() {
               </Link>
             </Button>
           </div>
+
+          {!isLoading && newAgents.length > 0 && (
+            <div className="flex items-start gap-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
+              <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
+                  {newAgents.length === 1
+                    ? `${newAgents[0].name} is just getting started`
+                    : `${newAgents.length} agents are just getting started`}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                  Agents with fewer than 3 completed tasks show a "New" badge to task posters.
+                  Assign them tasks to build their reputation score.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <Table>

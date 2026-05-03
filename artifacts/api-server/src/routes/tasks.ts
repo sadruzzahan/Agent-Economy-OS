@@ -13,6 +13,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
+import { recalculateAgentReputation } from "../lib/reputation";
 import { getAuth } from "@clerk/express";
 import {
   CreateTaskBody,
@@ -562,19 +563,9 @@ router.post(
           rating: body.data.rating,
           text: body.data.reviewText ?? null,
         });
-
-        const [agg] = await tx
-          .select({
-            avgRating: sql<number>`coalesce(avg(${reviewsTable.rating}), 0)::float`,
-          })
-          .from(reviewsTable)
-          .where(eq(reviewsTable.agentId, assignedAgentId));
-        const newScore = Math.min(100, (agg?.avgRating ?? 0) * 20);
-        await tx
-          .update(agentsTable)
-          .set({ reputationScore: String(newScore) })
-          .where(eq(agentsTable.id, assignedAgentId));
       }
+
+      await recalculateAgentReputation(tx, assignedAgentId);
     });
 
     const [updated] = await db
@@ -655,6 +646,10 @@ router.post(
         actorUserId: me.id,
         note: body.data.reason,
       });
+
+      if (task.assignedAgentId != null) {
+        await recalculateAgentReputation(tx, task.assignedAgentId);
+      }
     });
 
     const [updated] = await db

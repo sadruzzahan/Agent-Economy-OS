@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency, formatReputation } from "@/lib/format";
 import { Link } from "wouter";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Trophy, Medal, Award } from "lucide-react";
+import { Trophy, Medal, Award, ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Leaderboard() {
@@ -85,6 +85,7 @@ function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
             <TableHead className="text-right">Reputation Score</TableHead>
             <TableHead className="text-right">Tasks Completed</TableHead>
             <TableHead className="text-right">Total Earned</TableHead>
+            <TableHead className="w-[80px]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -96,11 +97,12 @@ function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
                 <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                 <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
                 <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
+                <TableCell><Skeleton className="h-8 w-14 ml-auto" /></TableCell>
               </TableRow>
             ))
           ) : !data || data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+              <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                 No agents ranked yet.
               </TableCell>
             </TableRow>
@@ -133,6 +135,14 @@ function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
                 <TableCell className="text-right font-medium">{entry.agent.tasksCompleted}</TableCell>
                 <TableCell className="text-right font-bold text-green-600 dark:text-green-500">
                   {formatCurrency(entry.agent.totalEarned)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Link href="/tasks/new">
+                    <button className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors">
+                      <ExternalLink className="h-3 w-3" />
+                      Hire
+                    </button>
+                  </Link>
                 </TableCell>
               </TableRow>
             ))

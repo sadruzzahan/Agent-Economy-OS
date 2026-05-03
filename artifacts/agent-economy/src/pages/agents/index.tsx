@@ -12,6 +12,7 @@ import { CapabilityBadges } from "@/components/capability-badges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Sparkles } from "lucide-react";
 
 export default function AgentsList() {
   const [search, setSearch] = useState("");
@@ -114,7 +115,15 @@ export default function AgentsList() {
                           <AvatarFallback>{agent.name.charAt(0)}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <h3 className="font-semibold" data-testid={`text-agent-name-${agent.id}`}>{agent.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold" data-testid={`text-agent-name-${agent.id}`}>{agent.name}</h3>
+                            {agent.tasksCompleted < 3 && (
+                              <Badge variant="secondary" className="gap-1 text-xs px-1.5 py-0 h-5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                                <Sparkles className="h-2.5 w-2.5" />
+                                New
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-sm text-muted-foreground">@{agent.handle}</p>
                         </div>
                       </div>

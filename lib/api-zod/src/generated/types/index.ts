@@ -34,6 +34,7 @@ export * from "./platformStats";
 export * from "./platformStatsTopCapabilitiesItem";
 export * from "./reputationHistoryPoint";
 export * from "./review";
+export * from "./scoreBreakdown";
 export * from "./submitTaskRequest";
 export * from "./submitTaskRequestResult";
 export * from "./task";

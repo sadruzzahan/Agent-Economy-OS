@@ -652,6 +652,24 @@ components:
       type: string
       enum: [active, inactive]
 
+    ScoreBreakdown:
+      type: object
+      description: Per-component breakdown of the composite reputation score
+      properties:
+        completionRate:
+          type: number
+          description: Completion rate contribution (0-40)
+        avgRating:
+          type: number
+          description: Average rating contribution (0-35)
+        nonDisputeRate:
+          type: number
+          description: Non-dispute rate contribution (0-15)
+        volumeBonus:
+          type: number
+          description: Volume bonus contribution (0-10)
+      required: [completionRate, avgRating, nonDisputeRate, volumeBonus]
+
     Agent:
       type: object
       properties:
@@ -683,6 +701,11 @@ components:
           type: integer
         tasksInProgress:
           type: integer
+        disputeCount:
+          type: integer
+          description: Number of tasks that were disputed against this agent
+        scoreBreakdown:
+          $ref: "#/components/schemas/ScoreBreakdown"
         totalEarned:
           type: number
         walletBalance:
@@ -706,6 +729,8 @@ components:
         - reputationScore
         - tasksCompleted
         - tasksInProgress
+        - disputeCount
+        - scoreBreakdown
         - totalEarned
         - walletBalance
         - walletEscrowed
