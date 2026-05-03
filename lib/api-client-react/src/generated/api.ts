@@ -19,14 +19,17 @@ import type {
 import type {
   ActivityItem,
   Agent,
+  AgentActivityLogEntry,
   AssignTaskRequest,
   BadRequestResponse,
   Capability,
+  Checkpoint,
   CreateAgentRequest,
   CreateAgentResponse,
   CreateTaskRequest,
   DashboardSummary,
   DisputeTaskRequest,
+  GetAgentActivityParams,
   GetDashboardActivityParams,
   GetLeaderboardParams,
   HealthStatus,
@@ -2322,6 +2325,214 @@ export function useGetPlatformStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetPlatformStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get recent runtime API activity for an agent
+ */
+export const getGetAgentActivityUrl = (
+  agentId: number,
+  params?: GetAgentActivityParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/agents/${agentId}/activity?${stringifiedParams}`
+    : `/api/agents/${agentId}/activity`;
+};
+
+export const getAgentActivity = async (
+  agentId: number,
+  params?: GetAgentActivityParams,
+  options?: RequestInit,
+): Promise<AgentActivityLogEntry[]> => {
+  return customFetch<AgentActivityLogEntry[]>(
+    getGetAgentActivityUrl(agentId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAgentActivityQueryKey = (
+  agentId: number,
+  params?: GetAgentActivityParams,
+) => {
+  return [
+    `/api/agents/${agentId}/activity`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetAgentActivityQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAgentActivity>>,
+  TError = ErrorType<NotFoundResponse>,
+>(
+  agentId: number,
+  params?: GetAgentActivityParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAgentActivity>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAgentActivityQueryKey(agentId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAgentActivity>>
+  > = ({ signal }) =>
+    getAgentActivity(agentId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!agentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAgentActivity>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAgentActivityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAgentActivity>>
+>;
+export type GetAgentActivityQueryError = ErrorType<NotFoundResponse>;
+
+/**
+ * @summary Get recent runtime API activity for an agent
+ */
+
+export function useGetAgentActivity<
+  TData = Awaited<ReturnType<typeof getAgentActivity>>,
+  TError = ErrorType<NotFoundResponse>,
+>(
+  agentId: number,
+  params?: GetAgentActivityParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAgentActivity>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAgentActivityQueryOptions(
+    agentId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get latest checkpoint for a task (visible to task poster)
+ */
+export const getGetTaskCheckpointUrl = (taskId: number) => {
+  return `/api/tasks/${taskId}/checkpoint`;
+};
+
+export const getTaskCheckpoint = async (
+  taskId: number,
+  options?: RequestInit,
+): Promise<Checkpoint | null> => {
+  return customFetch<Checkpoint | null>(getGetTaskCheckpointUrl(taskId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTaskCheckpointQueryKey = (taskId: number) => {
+  return [`/api/tasks/${taskId}/checkpoint`] as const;
+};
+
+export const getGetTaskCheckpointQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTaskCheckpoint>>,
+  TError = ErrorType<NotFoundResponse>,
+>(
+  taskId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTaskCheckpoint>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTaskCheckpointQueryKey(taskId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTaskCheckpoint>>
+  > = ({ signal }) => getTaskCheckpoint(taskId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!taskId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTaskCheckpoint>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTaskCheckpointQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTaskCheckpoint>>
+>;
+export type GetTaskCheckpointQueryError = ErrorType<NotFoundResponse>;
+
+/**
+ * @summary Get latest checkpoint for a task (visible to task poster)
+ */
+
+export function useGetTaskCheckpoint<
+  TData = Awaited<ReturnType<typeof getTaskCheckpoint>>,
+  TError = ErrorType<NotFoundResponse>,
+>(
+  taskId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTaskCheckpoint>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTaskCheckpointQueryOptions(taskId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

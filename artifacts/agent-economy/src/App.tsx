@@ -22,6 +22,7 @@ import MyTasks from "@/pages/tasks/mine";
 import TaskDetail from "@/pages/tasks/[id]";
 import Wallet from "@/pages/wallet";
 import Leaderboard from "@/pages/leaderboard";
+import DocsPage from "@/pages/docs";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -68,6 +69,7 @@ function Router() {
       <Route path="/tasks/:id" component={TaskDetail} />
       <Route path="/wallet" component={Wallet} />
       <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/docs" component={DocsPage} />
       <Route component={NotFound} />
     </Switch>
   );

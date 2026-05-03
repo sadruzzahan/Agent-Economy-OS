@@ -67,9 +67,44 @@ Shared libs:
 ### Tests
 - `artifacts/api-server/src/__tests__/reputation.test.ts` — vitest unit tests for `computeReputationScore` covering: zero activity, partial completion, full 100-score case, volume bonus cap, and rounding.
 
+## Runtime API (Task #6)
+
+Agents interact with the platform programmatically using an API key (format: `aeo_<base64url>`, SHA-256-hashed in DB).
+
+### New DB Tables
+- `task_checkpoints` — per-task JSON state blobs (id, task_id, agent_id, state jsonb, note, created_at, updated_at)
+- `agent_activity_log` — each runtime API call logged (agent_id, method, endpoint, response_status, ip_address, created_at)
+
+### API Key Auth Middleware
+`artifacts/api-server/src/middlewares/apiKeyAuth.ts`:
+- Extracts Bearer token, SHA-256-hashes it, looks up in `agentsTable.apiKeyHash`
+- Rate-limits to 100 req/min per key (in-memory token buckets)
+- Fires-and-forgets `lastActiveAt` update on the agent row
+
+### Runtime Endpoints (API key auth, `/api/runtime/*`)
+- `GET /runtime/me` — agent identity + wallet balance + task counts
+- `GET /runtime/tasks/assigned` — tasks with status='assigned' for this agent
+- `POST /runtime/tasks/:id/accept` — transition assigned → in_progress
+- `GET /runtime/tasks/:id/checkpoint` — latest checkpoint (null if none)
+- `POST /runtime/tasks/:id/checkpoint` — save checkpoint with {state, note}
+- `POST /runtime/tasks/:id/submit` — submit result JSON, transitions to submitted
+- `POST /runtime/tasks` — post sub-task from agent wallet (spend limit enforced)
+
+All runtime calls are logged to `agent_activity_log` after each request.
+
+### Clerk-Authed Runtime Endpoints (for frontend display)
+- `GET /api/agents/:agentId/activity` — recent activity log (last 50 entries)
+- `GET /api/tasks/:taskId/checkpoint` — latest checkpoint visible to task poster
+
+### Frontend Updates
+- Agent profile (`/agents/:id`): Reputation / Reviews / **Runtime Activity** tab layout; activity tab shows a colour-coded table of method, endpoint, HTTP status, timestamp.
+- My Agents (`/agents/mine`): **Connection status indicator** — green pulsing dot "Connected" (lastActiveAt < 24h) or grey "Offline"; tooltip shows exact time.
+- New `/docs` page: full developer documentation with Authentication, Task Lifecycle, all 7 runtime endpoints (curl + TypeScript + Response examples), Error Codes table.
+- "Runtime API Docs" nav link added to the signed-in sidebar.
+
 ## Pages
 
-Public: `/`, `/sign-in/*?`, `/sign-up/*?`, `/agents`, `/agents/:id`, `/tasks`, `/tasks/:id`, `/leaderboard`.
+Public: `/`, `/sign-in/*?`, `/sign-up/*?`, `/agents`, `/agents/:id`, `/tasks`, `/tasks/:id`, `/leaderboard`, `/docs`.
 Signed-in: `/dashboard`, `/agents/mine`, `/agents/new`, `/tasks/mine`, `/tasks/new`, `/wallet`.
 
 ## Conventions

@@ -5,6 +5,7 @@ import {
   tasksTable,
   taskCapabilitiesTable,
   taskStatusLogTable,
+  taskCheckpointsTable,
   capabilitiesTable,
   agentsTable,
   walletsTable,
@@ -733,6 +734,41 @@ router.post(
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
     res.json(ResolveDisputeResponse.parse(await buildTaskSummary(updated!)));
+  },
+);
+
+router.get(
+  "/tasks/:taskId/checkpoint",
+  async (req, res): Promise<void> => {
+    const taskId = parseInt(req.params.taskId, 10);
+    if (isNaN(taskId)) {
+      res.status(400).json({ error: "Invalid task ID" });
+      return;
+    }
+    const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    if (!task) {
+      res.status(404).json({ error: "Task not found" });
+      return;
+    }
+    const [cp] = await db
+      .select()
+      .from(taskCheckpointsTable)
+      .where(eq(taskCheckpointsTable.taskId, taskId))
+      .orderBy(desc(taskCheckpointsTable.createdAt))
+      .limit(1);
+    if (!cp) {
+      res.json(null);
+      return;
+    }
+    res.json({
+      id: cp.id,
+      taskId: cp.taskId,
+      agentId: cp.agentId,
+      state: cp.state,
+      note: cp.note ?? null,
+      createdAt: cp.createdAt.toISOString(),
+      updatedAt: cp.updatedAt.toISOString(),
+    });
   },
 );
 

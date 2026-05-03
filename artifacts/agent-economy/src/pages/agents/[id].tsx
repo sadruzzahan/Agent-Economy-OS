@@ -1,15 +1,25 @@
 import { PublicLayout } from "@/components/layout";
 import { useParams } from "wouter";
-import { useGetAgent, useGetAgentReputationHistory, useListAgentReviews, getGetAgentQueryKey, getGetAgentReputationHistoryQueryKey, getListAgentReviewsQueryKey } from "@workspace/api-client-react";
+import {
+  useGetAgent,
+  useGetAgentReputationHistory,
+  useListAgentReviews,
+  useGetAgentActivity,
+  getGetAgentQueryKey,
+  getGetAgentReputationHistoryQueryKey,
+  getListAgentReviewsQueryKey,
+  getGetAgentActivityQueryKey,
+} from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { CapabilityBadges } from "@/components/capability-badges";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatReputation, formatDate } from "@/lib/format";
 import { AgentStatusBadge } from "@/components/status-badge";
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Activity, Star } from "lucide-react";
 
 function ScoreBar({
   label,
@@ -37,6 +47,83 @@ function ScoreBar({
           style={{ width: `${pct}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+function statusColor(status: number): string {
+  if (status >= 200 && status < 300) return "text-green-600 dark:text-green-400";
+  if (status >= 400 && status < 500) return "text-amber-600 dark:text-amber-400";
+  if (status >= 500) return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
+}
+
+function methodColor(method: string): string {
+  if (method === "GET") return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+  if (method === "POST") return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+  if (method === "DELETE") return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+  return "bg-muted text-muted-foreground";
+}
+
+function RuntimeActivityTab({ agentId }: { agentId: number }) {
+  const { data: logs, isLoading } = useGetAgentActivity(
+    agentId,
+    { limit: 50 },
+    { query: { enabled: !!agentId, queryKey: getGetAgentActivityQueryKey(agentId) } },
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 pt-4">
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!logs || logs.length === 0) {
+    return (
+      <div className="h-48 flex flex-col items-center justify-center text-muted-foreground border border-dashed rounded-lg mt-4">
+        <Activity className="h-8 w-8 mb-2 opacity-40" />
+        <p className="text-sm">No runtime API activity yet.</p>
+        <p className="text-xs mt-1">Activity will appear here once this agent calls the runtime API.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-border overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Method</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Endpoint</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Status</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Time</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {logs.map((log) => (
+            <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+              <td className="px-4 py-2.5">
+                <span className={`inline-block text-xs font-mono font-bold px-1.5 py-0.5 rounded ${methodColor(log.method)}`}>
+                  {log.method}
+                </span>
+              </td>
+              <td className="px-4 py-2.5 font-mono text-xs text-foreground/80 max-w-xs truncate">
+                {log.endpoint}
+              </td>
+              <td className={`px-4 py-2.5 font-mono font-semibold ${statusColor(log.responseStatus)}`}>
+                {log.responseStatus}
+              </td>
+              <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                {new Date(log.createdAt).toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -122,99 +209,130 @@ export default function AgentProfile() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-8">
-          <div className="md:col-span-2 space-y-8">
-            {/* Reputation Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Reputation History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoadingHistory ? (
-                  <Skeleton className="h-64 w-full" />
-                ) : !history || history.length === 0 ? (
-                  <div className="h-64 flex items-center justify-center text-muted-foreground border border-dashed rounded-md">
-                    Not enough data
-                  </div>
-                ) : (
-                  <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={history} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                        <XAxis 
-                          dataKey="date" 
-                          tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                          stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <YAxis 
-                          domain={[0, 100]} 
-                          stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <RechartsTooltip 
-                          contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                          labelFormatter={(val) => new Date(val).toLocaleDateString()}
-                          formatter={(val: number) => [val.toFixed(1), "Score"]}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="score" 
-                          stroke="hsl(var(--primary))" 
-                          strokeWidth={3}
-                          dot={false}
-                          activeDot={{ r: 6, fill: "hsl(var(--primary))" }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="md:col-span-2 space-y-0">
+            {/* Tabs for Reputation + Reviews + Runtime Activity */}
+            <Tabs defaultValue="reputation">
+              <TabsList className="grid grid-cols-3 w-full mb-6">
+                <TabsTrigger value="reputation" className="gap-2">
+                  <span>Reputation</span>
+                </TabsTrigger>
+                <TabsTrigger value="reviews" className="gap-2">
+                  <Star className="h-3.5 w-3.5" />
+                  Reviews
+                </TabsTrigger>
+                <TabsTrigger value="runtime" className="gap-2">
+                  <Activity className="h-3.5 w-3.5" />
+                  Runtime Activity
+                </TabsTrigger>
+              </TabsList>
 
-            {/* Reviews */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Reviews</CardTitle>
-                <p className="text-xs text-muted-foreground">Showing latest 10 reviews</p>
-              </CardHeader>
-              <CardContent>
-                {isLoadingReviews ? (
-                  <div className="space-y-4">
-                    {[1, 2].map(i => <Skeleton key={i} className="h-24 w-full" />)}
-                  </div>
-                ) : !reviews || reviews.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">No reviews yet.</div>
-                ) : (
-                  <div className="space-y-6">
-                    {reviews.map(review => (
-                      <div key={review.id} className="border-b border-border last:border-0 pb-6 last:pb-0">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="font-medium text-sm">
-                            {review.taskTitle}
-                          </div>
-                          <div className="flex items-center text-amber-500">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <span key={i} className={i < review.rating ? "" : "text-muted"}>★</span>
-                            ))}
-                          </div>
-                        </div>
-                        {review.text && (
-                          <p className="text-sm mt-2 text-foreground/90 italic">"{review.text}"</p>
-                        )}
-                        <div className="text-xs text-muted-foreground mt-3 flex justify-between">
-                          <span>By {review.reviewerDisplayName || "Unknown"}</span>
-                          <span>{formatDate(review.createdAt)}</span>
-                        </div>
+              <TabsContent value="reputation">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Reputation History</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingHistory ? (
+                      <Skeleton className="h-64 w-full" />
+                    ) : !history || history.length === 0 ? (
+                      <div className="h-64 flex items-center justify-center text-muted-foreground border border-dashed rounded-md">
+                        Not enough data
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    ) : (
+                      <div className="h-72 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={history} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                            <XAxis 
+                              dataKey="date" 
+                              tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              stroke="hsl(var(--muted-foreground))"
+                              fontSize={12}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <YAxis 
+                              domain={[0, 100]} 
+                              stroke="hsl(var(--muted-foreground))"
+                              fontSize={12}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <RechartsTooltip 
+                              contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
+                              labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                              formatter={(val: number) => [val.toFixed(1), "Score"]}
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="score" 
+                              stroke="hsl(var(--primary))" 
+                              strokeWidth={3}
+                              dot={false}
+                              activeDot={{ r: 6, fill: "hsl(var(--primary))" }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="reviews">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent Reviews</CardTitle>
+                    <p className="text-xs text-muted-foreground">Showing latest 10 reviews</p>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingReviews ? (
+                      <div className="space-y-4">
+                        {[1, 2].map(i => <Skeleton key={i} className="h-24 w-full" />)}
+                      </div>
+                    ) : !reviews || reviews.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">No reviews yet.</div>
+                    ) : (
+                      <div className="space-y-6">
+                        {reviews.map(review => (
+                          <div key={review.id} className="border-b border-border last:border-0 pb-6 last:pb-0">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="font-medium text-sm">
+                                {review.taskTitle}
+                              </div>
+                              <div className="flex items-center text-amber-500">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <span key={i} className={i < review.rating ? "" : "text-muted"}>★</span>
+                                ))}
+                              </div>
+                            </div>
+                            {review.text && (
+                              <p className="text-sm mt-2 text-foreground/90 italic">"{review.text}"</p>
+                            )}
+                            <div className="text-xs text-muted-foreground mt-3 flex justify-between">
+                              <span>By {review.reviewerDisplayName || "Unknown"}</span>
+                              <span>{formatDate(review.createdAt)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="runtime">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Runtime API Activity</CardTitle>
+                    <p className="text-xs text-muted-foreground">Last 50 API calls made by this agent via the runtime API</p>
+                  </CardHeader>
+                  <CardContent>
+                    <RuntimeActivityTab agentId={agentId} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </div>
 
           <div className="space-y-6">

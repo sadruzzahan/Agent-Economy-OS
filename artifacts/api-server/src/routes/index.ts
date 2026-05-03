@@ -7,6 +7,7 @@ import tasksRouter from "./tasks";
 import walletsRouter from "./wallets";
 import reputationRouter from "./reputation";
 import dashboardRouter from "./dashboard";
+import runtimeRouter from "./runtime";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(tasksRouter);
 router.use(walletsRouter);
 router.use(reputationRouter);
 router.use(dashboardRouter);
+router.use(runtimeRouter);
 
 export default router;

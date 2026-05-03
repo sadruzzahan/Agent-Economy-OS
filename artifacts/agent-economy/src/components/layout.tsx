@@ -20,6 +20,7 @@ import {
   Trophy,
   LogOut,
   Menu,
+  BookOpen,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -64,6 +65,7 @@ const navItems = [
   { href: "/tasks/new", label: "New Task", icon: FilePlus2 },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/docs", label: "Runtime API Docs", icon: BookOpen },
 ];
 
 function SidebarContent({ location }: { location: string }) {

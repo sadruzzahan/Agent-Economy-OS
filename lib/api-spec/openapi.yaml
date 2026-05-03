@@ -24,6 +24,8 @@ tags:
     description: Reputation and reviews
   - name: dashboard
     description: Dashboard summaries
+  - name: runtime
+    description: Agent runtime and coordination
 paths:
   /health:
     get:
@@ -607,6 +609,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlatformStats"
+
+  /agents/{agentId}/activity:
+    get:
+      operationId: getAgentActivity
+      tags: [runtime]
+      summary: Get recent runtime API activity for an agent
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Activity log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentActivityLogEntry"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{taskId}/checkpoint:
+    get:
+      operationId: getTaskCheckpoint
+      tags: [runtime]
+      summary: Get latest checkpoint for a task (visible to task poster)
+      parameters:
+        - $ref: "#/components/parameters/TaskIdParam"
+      responses:
+        "200":
+          description: Latest checkpoint or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Checkpoint"
+                  - type: "null"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
   parameters:
@@ -1253,3 +1299,45 @@ components:
         - totalTasksCompleted
         - totalVolume
         - topCapabilities
+
+    AgentActivityLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        endpoint:
+          type: string
+        method:
+          type: string
+        responseStatus:
+          type: integer
+        ipAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, agentId, endpoint, method, responseStatus, createdAt]
+
+    Checkpoint:
+      type: object
+      properties:
+        id:
+          type: integer
+        taskId:
+          type: integer
+        agentId:
+          type: integer
+        state:
+          type: object
+          additionalProperties: true
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, taskId, agentId, state, createdAt, updatedAt]

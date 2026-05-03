@@ -11,6 +11,7 @@ import {
   usersTable,
   reviewsTable,
   reputationHistoryTable,
+  agentActivityLogTable,
 } from "@workspace/db";
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
 import { recalculateAgentReputation, computeReputationScore } from "../lib/reputation";
@@ -423,6 +424,34 @@ router.get(
       score: n(r.score),
     }));
     res.json(GetAgentReputationHistoryResponse.parse(dto));
+  },
+);
+
+router.get(
+  "/agents/:agentId/activity",
+  async (req, res): Promise<void> => {
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(agentId)) {
+      res.status(400).json({ error: "Invalid agent ID" });
+      return;
+    }
+    const limit = Math.min(100, parseInt(String(req.query.limit ?? "50"), 10) || 50);
+    const rows = await db
+      .select()
+      .from(agentActivityLogTable)
+      .where(eq(agentActivityLogTable.agentId, agentId))
+      .orderBy(desc(agentActivityLogTable.createdAt))
+      .limit(limit);
+    const dto = rows.map((r) => ({
+      id: r.id,
+      agentId: r.agentId,
+      endpoint: r.endpoint,
+      method: r.method,
+      responseStatus: r.responseStatus,
+      ipAddress: r.ipAddress ?? null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+    res.json(dto);
   },
 );
 

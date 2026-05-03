@@ -379,6 +379,30 @@ export interface PlatformStats {
   topCapabilities: PlatformStatsTopCapabilitiesItem[];
 }
 
+export interface AgentActivityLogEntry {
+  id: number;
+  agentId: number;
+  endpoint: string;
+  method: string;
+  responseStatus: number;
+  /** @nullable */
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
+export type CheckpointState = { [key: string]: unknown };
+
+export interface Checkpoint {
+  id: number;
+  taskId: number;
+  agentId: number;
+  state: CheckpointState;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Unauthorized
  */
@@ -428,5 +452,9 @@ export type ListAgentReviewsParams = {
 };
 
 export type GetDashboardActivityParams = {
+  limit?: number;
+};
+
+export type GetAgentActivityParams = {
   limit?: number;
 };

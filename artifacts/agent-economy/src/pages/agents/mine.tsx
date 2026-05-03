@@ -3,12 +3,63 @@ import { SignedInLayout } from "@/components/layout";
 import { useListAgents } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { PlusCircle, MoreHorizontal, Sparkles } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Sparkles, Wifi, WifiOff } from "lucide-react";
 import { formatCurrency, formatReputation, formatDate } from "@/lib/format";
 import { AgentStatusBadge } from "@/components/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+function ConnectionStatus({ lastActiveAt }: { lastActiveAt: string | null | undefined }) {
+  if (!lastActiveAt) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground text-xs">
+              <WifiOff className="h-3.5 w-3.5" />
+              Never connected
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>This agent has never called the runtime API</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  const lastActive = new Date(lastActiveAt);
+  const hoursSince = (Date.now() - lastActive.getTime()) / (1000 * 60 * 60);
+  const isOnline = hoursSince < 24;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${isOnline ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+            {isOnline ? (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+                Connected
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 rounded-full bg-muted-foreground/50 inline-block" />
+                Offline
+              </>
+            )}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {isOnline ? `Active ${hoursSince < 1 ? "< 1 hour" : `${Math.floor(hoursSince)}h`} ago` : `Last seen ${formatDate(lastActiveAt)}`}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 export default function MyAgents() {
   const { data: agents, isLoading } = useListAgents({ ownedByMe: true });
@@ -58,11 +109,11 @@ export default function MyAgents() {
                 <TableRow className="bg-muted/50">
                   <TableHead>Agent</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Connection</TableHead>
                   <TableHead className="text-right">Reputation</TableHead>
                   <TableHead className="text-right">Tasks (Active/Done)</TableHead>
                   <TableHead className="text-right">Earned</TableHead>
                   <TableHead className="text-right">Wallet</TableHead>
-                  <TableHead>Last Active</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -72,11 +123,11 @@ export default function MyAgents() {
                     <TableRow key={i}>
                       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-8 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   ))
@@ -101,13 +152,15 @@ export default function MyAgents() {
                         <div className="text-xs text-muted-foreground font-normal">@{agent.handle}</div>
                       </TableCell>
                       <TableCell><AgentStatusBadge status={agent.status} /></TableCell>
+                      <TableCell>
+                        <ConnectionStatus lastActiveAt={agent.lastActiveAt} />
+                      </TableCell>
                       <TableCell className="text-right">{formatReputation(agent.reputationScore)}</TableCell>
                       <TableCell className="text-right text-sm">
                         <span className="text-amber-600">{agent.tasksInProgress}</span> / <span className="text-green-600">{agent.tasksCompleted}</span>
                       </TableCell>
                       <TableCell className="text-right">{formatCurrency(agent.totalEarned)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(agent.walletBalance)}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{formatDate(agent.lastActiveAt)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

@@ -884,3 +884,47 @@ export const GetPlatformStatsResponse = zod.object({
     }),
   ),
 });
+
+/**
+ * @summary Get recent runtime API activity for an agent
+ */
+export const GetAgentActivityParams = zod.object({
+  agentId: zod.coerce.number(),
+});
+
+export const getAgentActivityQueryLimitDefault = 50;
+
+export const GetAgentActivityQueryParams = zod.object({
+  limit: zod.coerce.number().default(getAgentActivityQueryLimitDefault),
+});
+
+export const GetAgentActivityResponseItem = zod.object({
+  id: zod.number(),
+  agentId: zod.number(),
+  endpoint: zod.string(),
+  method: zod.string(),
+  responseStatus: zod.number(),
+  ipAddress: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const GetAgentActivityResponse = zod.array(GetAgentActivityResponseItem);
+
+/**
+ * @summary Get latest checkpoint for a task (visible to task poster)
+ */
+export const GetTaskCheckpointParams = zod.object({
+  taskId: zod.coerce.number(),
+});
+
+export const GetTaskCheckpointResponse = zod.union([
+  zod.object({
+    id: zod.number(),
+    taskId: zod.number(),
+    agentId: zod.number(),
+    state: zod.record(zod.string(), zod.unknown()),
+    note: zod.string().nullish(),
+    createdAt: zod.coerce.date(),
+    updatedAt: zod.coerce.date(),
+  }),
+  zod.null(),
+]);
