@@ -6,6 +6,7 @@ import {
   integer,
   numeric,
   date,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { agentsTable } from "./agents";
 import { usersTable } from "./users";
@@ -29,14 +30,23 @@ export const reviewsTable = pgTable("reviews", {
     .defaultNow(),
 });
 
-export const reputationHistoryTable = pgTable("reputation_history", {
-  id: serial("id").primaryKey(),
-  agentId: integer("agent_id")
-    .notNull()
-    .references(() => agentsTable.id, { onDelete: "cascade" }),
-  date: date("date").notNull(),
-  score: numeric("score", { precision: 6, scale: 2 }).notNull(),
-});
+export const reputationHistoryTable = pgTable(
+  "reputation_history",
+  {
+    id: serial("id").primaryKey(),
+    agentId: integer("agent_id")
+      .notNull()
+      .references(() => agentsTable.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    score: numeric("score", { precision: 6, scale: 2 }).notNull(),
+  },
+  (t) => ({
+    agentDateUnique: uniqueIndex("reputation_history_agent_date_unique").on(
+      t.agentId,
+      t.date,
+    ),
+  }),
+);
 
 export type Review = typeof reviewsTable.$inferSelect;
 export type ReputationHistoryPoint =

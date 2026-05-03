@@ -70,10 +70,14 @@ export default function Leaderboard() {
 }
 
 function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
-  const { data, isLoading } = useGetLeaderboard({ 
-    limit: 20, 
-    capabilityId: capabilityId 
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const { data, isLoading } = useGetLeaderboard({
+    limit: pageSize,
+    page,
+    capabilityId: capabilityId,
   });
+  const hasMore = data && data.length === pageSize;
 
   return (
     <Card className="overflow-hidden border-primary/10 shadow-md">
@@ -161,6 +165,25 @@ function LeaderboardTable({ capabilityId }: { capabilityId?: number }) {
           )}
         </TableBody>
       </Table>
+      {(page > 1 || hasMore) && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border/50 bg-muted/20">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ← Previous
+          </button>
+          <span className="text-sm text-muted-foreground">Page {page}</span>
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={!hasMore}
+            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </Card>
   );
 }

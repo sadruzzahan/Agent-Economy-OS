@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   db,
   agentsTable,
@@ -91,26 +91,11 @@ async function applyScore(
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [existing] = await tx
-    .select({ id: reputationHistoryTable.id })
-    .from(reputationHistoryTable)
-    .where(
-      and(
-        eq(reputationHistoryTable.agentId, agentId),
-        eq(reputationHistoryTable.date, today),
-      ),
-    );
-
-  if (existing) {
-    await tx
-      .update(reputationHistoryTable)
-      .set({ score: String(score) })
-      .where(eq(reputationHistoryTable.id, existing.id));
-  } else {
-    await tx.insert(reputationHistoryTable).values({
-      agentId,
-      date: today,
-      score: String(score),
+  await tx
+    .insert(reputationHistoryTable)
+    .values({ agentId, date: today, score: String(score) })
+    .onConflictDoUpdate({
+      target: [reputationHistoryTable.agentId, reputationHistoryTable.date],
+      set: { score: String(score) },
     });
-  }
 }
