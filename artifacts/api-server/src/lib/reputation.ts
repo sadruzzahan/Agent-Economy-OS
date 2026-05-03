@@ -16,6 +16,44 @@ export interface ScoreComponents {
   volumeBonus: number;
 }
 
+export interface TaskCounts {
+  completed: number;
+  disputed: number;
+  totalAssigned: number;
+}
+
+/** Pure scoring function — safe to unit-test without a DB connection. */
+export function computeReputationScore(
+  counts: TaskCounts,
+  avgRating: number,
+): { score: number; breakdown: ScoreComponents } {
+  const { completed, disputed, totalAssigned } = counts;
+
+  if (totalAssigned === 0 && avgRating === 0) {
+    return {
+      score: 0,
+      breakdown: { completionRate: 0, avgRating: 0, nonDisputeRate: 0, volumeBonus: 0 },
+    };
+  }
+
+  const completionRateComponent = (completed / Math.max(1, totalAssigned)) * 40;
+  const avgRatingComponent = (avgRating / 5) * 35;
+  const nonDisputeRateComponent = (1 - disputed / Math.max(1, totalAssigned)) * 15;
+  const volumeBonusComponent = Math.min(10, completed);
+
+  const raw = completionRateComponent + avgRatingComponent + nonDisputeRateComponent + volumeBonusComponent;
+  const score = Math.round(Math.min(100, raw) * 10) / 10;
+
+  const breakdown: ScoreComponents = {
+    completionRate: Math.round(completionRateComponent * 10) / 10,
+    avgRating: Math.round(avgRatingComponent * 10) / 10,
+    nonDisputeRate: Math.round(nonDisputeRateComponent * 10) / 10,
+    volumeBonus: Math.round(volumeBonusComponent * 10) / 10,
+  };
+
+  return { score, breakdown };
+}
+
 export async function recalculateAgentReputation(
   tx: Tx,
   agentId: number,
@@ -36,44 +74,14 @@ export async function recalculateAgentReputation(
     .from(reviewsTable)
     .where(eq(reviewsTable.agentId, agentId));
 
-  const completed = counts?.completed ?? 0;
-  const disputed = counts?.disputed ?? 0;
-  const totalAssigned = counts?.totalAssigned ?? 0;
+  const taskCounts: TaskCounts = {
+    completed: counts?.completed ?? 0,
+    disputed: counts?.disputed ?? 0,
+    totalAssigned: counts?.totalAssigned ?? 0,
+  };
   const avgRating = ratingAgg?.avgRating ?? 0;
 
-  if (totalAssigned === 0 && avgRating === 0) {
-    const breakdown: ScoreComponents = {
-      completionRate: 0,
-      avgRating: 0,
-      nonDisputeRate: 0,
-      volumeBonus: 0,
-    };
-    await applyScore(tx, agentId, 0, breakdown);
-    return { score: 0, breakdown };
-  }
-
-  const completionRateComponent =
-    (completed / Math.max(1, totalAssigned)) * 40;
-  const avgRatingComponent = (avgRating / 5) * 35;
-  const nonDisputeRateComponent =
-    (1 - disputed / Math.max(1, totalAssigned)) * 15;
-  const volumeBonusComponent = Math.min(10, completed);
-
-  const raw =
-    completionRateComponent +
-    avgRatingComponent +
-    nonDisputeRateComponent +
-    volumeBonusComponent;
-
-  const score = Math.round(Math.min(100, raw) * 10) / 10;
-
-  const breakdown: ScoreComponents = {
-    completionRate: Math.round(completionRateComponent * 10) / 10,
-    avgRating: Math.round(avgRatingComponent * 10) / 10,
-    nonDisputeRate: Math.round(nonDisputeRateComponent * 10) / 10,
-    volumeBonus: Math.round(volumeBonusComponent * 10) / 10,
-  };
-
+  const { score, breakdown } = computeReputationScore(taskCounts, avgRating);
   await applyScore(tx, agentId, score, breakdown);
   return { score, breakdown };
 }

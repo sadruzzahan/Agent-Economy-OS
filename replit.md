@@ -30,26 +30,42 @@ Shared libs:
 ## Reputation & Trust System (Task #5)
 
 ### Score Formula (composite, 0–100)
-- **Completion Rate** (40 pts): `(completedTasks / totalAssigned) * 40`
+- **Completion Rate** (40 pts): `(completed / max(1, totalAssigned)) * 40`
 - **Avg Rating** (35 pts): `(avgRating / 5) * 35`
-- **Reliability** (15 pts): `(1 - disputedTasks / totalAssigned) * 15`
-- **Volume Bonus** (10 pts): `min(10, completedTasks)` — capped at 10
+- **Reliability** (15 pts): `(1 - disputed / max(1, totalAssigned)) * 15`
+- **Volume Bonus** (10 pts): `min(10, completed)` — capped at 10
+- Agents with zero activity score 0 (not the DB default).
 
-### Backend
-- `artifacts/api-server/src/lib/reputation.ts` — `recalculateAgentReputation(tx, agentId)` computes composite score, updates `agentsTable.reputationScore`, and appends a daily snapshot to `reputationHistoryTable` (check-then-insert, no unique constraint).
-- Called from `tasks.ts` verify and dispute endpoints.
-- `buildAgentDto` in `agents.ts` computes live `scoreBreakdown` + `disputeCount` from DB; `reputationScore` returned is the computed live total (always consistent with breakdown).
+### Backend Implementation
+- `artifacts/api-server/src/lib/reputation.ts`:
+  - `computeReputationScore(counts, avgRating)` — pure function, unit-tested.
+  - `recalculateAgentReputation(tx, agentId)` — fetches counts/rating from DB, calls compute, persists score to `agentsTable.reputationScore`, atomically upserts daily snapshot to `reputationHistoryTable` via `ON CONFLICT (agent_id, date) DO UPDATE`.
+  - `reputation_history` has unique constraint on `(agent_id, date)` — no duplicates.
+  - DB column default for `reputation_score` is `0.00` (not 50).
+- Recalculation is triggered on ALL task status transitions: `assign`, `start`, `submit`, `verify`, `dispute`. Also triggered on agent creation.
+- `buildAgentDto` in `agents.ts`: reads `agentsTable.reputationScore` (persisted) for the `reputationScore` DTO field. `scoreBreakdown` components computed live for display. Sort order (list/leaderboard) and displayed score are always consistent.
 
 ### Frontend
-- Agent profile (`/agents/:id`): Score breakdown bar chart (4 colored bars with out-of labels), "New Agent" badge for < 3 completed tasks.
-- Agent directory (`/agents`): "New" badge on cards for agents with < 3 tasks.
-- My Agents (`/agents/mine`): Onboarding callout nudging first task for new agents.
-- Leaderboard (`/leaderboard`): "Hire" CTA column linking to agent profile.
+- Agent profile (`/agents/:id`): Score breakdown bar chart (4 colored bars), dispute count, review list (paginated), reputation history sparkline. "New Agent" badge for < 3 completed tasks.
+- Capability badges: 3 states — verified (green ✓), pending (amber with score + clock), unverified (gray).
+- Task verify dialog: rating is optional (1–5 stars with "Skip" option).
+- Agent directory (`/agents`): "New" badge on agent cards.
+- My Agents (`/agents/mine`): Onboarding callout for new agents with no tasks.
+- Leaderboard (`/leaderboard`): Paginated (10 per page with Prev/Next controls), capability filter tab, verified capability tags on each row, "Hire" CTA → `/tasks/new?agentId=X`. Rank is globally correct across pages.
+- New Task (`/tasks/new?agentId=X`): Pre-selection banner for hiring a specific agent. After task creation, redirects to task detail with `?assignAgentId=X` which auto-opens the assign dialog.
+
+### Dispute Adjudication (future — Task #17)
+- Current: dispute status directly penalizes the agent via the reliability component.
+- Future: task statuses `dispute_resolved_agent` / `dispute_resolved_poster` would allow scoring only on agent-loss outcomes.
 
 ### OpenAPI / Generated Types
 - `ScoreBreakdown` schema added to `lib/api-spec/openapi.yaml`.
 - `disputeCount` and `scoreBreakdown` fields added to `Agent` schema.
+- Reviews and leaderboard endpoints support `page`/`pageSize` pagination params.
 - Regenerate with: `pnpm --filter @workspace/api-spec run codegen`
+
+### Tests
+- `artifacts/api-server/src/__tests__/reputation.test.ts` — vitest unit tests for `computeReputationScore` covering: zero activity, partial completion, full 100-score case, volume bonus cap, and rounding.
 
 ## Pages
 
