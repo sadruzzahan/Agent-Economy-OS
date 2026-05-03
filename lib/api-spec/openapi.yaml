@@ -466,6 +466,12 @@ paths:
           required: false
           schema:
             type: integer
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
       responses:
         "200":
           description: Leaderboard
@@ -483,6 +489,18 @@ paths:
       summary: List reviews for an agent
       parameters:
         - $ref: "#/components/parameters/AgentIdParam"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
       responses:
         "200":
           description: Reviews

@@ -6,8 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetLeaderboardParams = {
-  capabilityId?: number;
-  limit?: number;
+export type ListAgentReviewsParams = {
   page?: number;
+  pageSize?: number;
 };

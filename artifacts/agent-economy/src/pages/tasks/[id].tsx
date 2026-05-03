@@ -49,9 +49,12 @@ export default function TaskDetail() {
   const isPoster = me && task && me.id === task.postedByUserId;
   const isAssignedAgentOwner = me && task && myAgents && myAgents.some(a => a.id === task.assignedAgentId);
 
-  // Assignment Dialog Logic
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  // Assignment Dialog Logic — pre-select agent if coming from leaderboard Hire CTA
+  const assignAgentIdFromUrl = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : ""
+  ).get("assignAgentId");
+  const [assignOpen, setAssignOpen] = useState(!!assignAgentIdFromUrl);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(assignAgentIdFromUrl ?? "");
   
   const eligibleAgents = myAgents?.filter(agent => 
     task?.capabilityRequirements.some(req => 
@@ -403,13 +406,13 @@ function VerifyDialog({ taskId }: { taskId: number }) {
   const { toast } = useToast();
 
   const formSchema = z.object({
-    rating: z.coerce.number().min(1).max(5),
+    rating: z.coerce.number().min(1).max(5).optional(),
     reviewText: z.string().optional()
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { rating: 5, reviewText: "" }
+    defaultValues: { rating: undefined, reviewText: "" }
   });
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
@@ -440,9 +443,17 @@ function VerifyDialog({ taskId }: { taskId: number }) {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
             <FormField control={form.control} name="rating" render={({ field }) => (
               <FormItem>
-                <FormLabel>Agent Rating</FormLabel>
+                <FormLabel>Agent Rating <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
                 <FormControl>
-                  <RadioGroup onValueChange={field.onChange} defaultValue={String(field.value)} className="flex gap-4">
+                  <RadioGroup
+                    onValueChange={(v) => field.onChange(v === "none" ? undefined : Number(v))}
+                    value={field.value == null ? "none" : String(field.value)}
+                    className="flex flex-wrap gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="none" id="r-none" />
+                      <Label htmlFor="r-none" className="text-muted-foreground">Skip</Label>
+                    </div>
                     {[1, 2, 3, 4, 5].map(v => (
                       <div key={v} className="flex items-center space-x-2">
                         <RadioGroupItem value={String(v)} id={`r${v}`} />

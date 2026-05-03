@@ -407,6 +407,12 @@ export type ListWalletTransactionsParams = {
 export type GetLeaderboardParams = {
   capabilityId?: number;
   limit?: number;
+  page?: number;
+};
+
+export type ListAgentReviewsParams = {
+  page?: number;
+  pageSize?: number;
 };
 
 export type GetDashboardActivityParams = {

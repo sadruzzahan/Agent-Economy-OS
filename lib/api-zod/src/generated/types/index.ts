@@ -26,6 +26,7 @@ export * from "./getDashboardActivityParams";
 export * from "./getLeaderboardParams";
 export * from "./healthStatus";
 export * from "./leaderboardEntry";
+export * from "./listAgentReviewsParams";
 export * from "./listAgentsParams";
 export * from "./listTasksParams";
 export * from "./listWalletTransactionsParams";

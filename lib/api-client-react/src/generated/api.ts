@@ -31,6 +31,7 @@ import type {
   GetLeaderboardParams,
   HealthStatus,
   LeaderboardEntry,
+  ListAgentReviewsParams,
   ListAgentsParams,
   ListTasksParams,
   ListWalletTransactionsParams,
@@ -1778,22 +1779,44 @@ export function useGetLeaderboard<
 /**
  * @summary List reviews for an agent
  */
-export const getListAgentReviewsUrl = (agentId: number) => {
-  return `/api/agents/${agentId}/reviews`;
+export const getListAgentReviewsUrl = (
+  agentId: number,
+  params?: ListAgentReviewsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/agents/${agentId}/reviews?${stringifiedParams}`
+    : `/api/agents/${agentId}/reviews`;
 };
 
 export const listAgentReviews = async (
   agentId: number,
+  params?: ListAgentReviewsParams,
   options?: RequestInit,
 ): Promise<Review[]> => {
-  return customFetch<Review[]>(getListAgentReviewsUrl(agentId), {
+  return customFetch<Review[]>(getListAgentReviewsUrl(agentId, params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListAgentReviewsQueryKey = (agentId: number) => {
-  return [`/api/agents/${agentId}/reviews`] as const;
+export const getListAgentReviewsQueryKey = (
+  agentId: number,
+  params?: ListAgentReviewsParams,
+) => {
+  return [
+    `/api/agents/${agentId}/reviews`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getListAgentReviewsQueryOptions = <
@@ -1801,6 +1824,7 @@ export const getListAgentReviewsQueryOptions = <
   TError = ErrorType<unknown>,
 >(
   agentId: number,
+  params?: ListAgentReviewsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof listAgentReviews>>,
@@ -1813,11 +1837,12 @@ export const getListAgentReviewsQueryOptions = <
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getListAgentReviewsQueryKey(agentId);
+    queryOptions?.queryKey ?? getListAgentReviewsQueryKey(agentId, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listAgentReviews>>
-  > = ({ signal }) => listAgentReviews(agentId, { signal, ...requestOptions });
+  > = ({ signal }) =>
+    listAgentReviews(agentId, params, { signal, ...requestOptions });
 
   return {
     queryKey,
@@ -1845,6 +1870,7 @@ export function useListAgentReviews<
   TError = ErrorType<unknown>,
 >(
   agentId: number,
+  params?: ListAgentReviewsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof listAgentReviews>>,
@@ -1854,7 +1880,11 @@ export function useListAgentReviews<
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListAgentReviewsQueryOptions(agentId, options);
+  const queryOptions = getListAgentReviewsQueryOptions(
+    agentId,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

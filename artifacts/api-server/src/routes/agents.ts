@@ -380,6 +380,10 @@ router.get(
       res.status(400).json({ error: params.error.message });
       return;
     }
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const pageSize = Math.min(50, Math.max(1, parseInt(String(req.query.pageSize ?? "10"), 10) || 10));
+    const offset = (page - 1) * pageSize;
+
     const rows = await db
       .select({
         id: reviewsTable.id,
@@ -395,7 +399,9 @@ router.get(
       .innerJoin(tasksTable, eq(reviewsTable.taskId, tasksTable.id))
       .innerJoin(usersTable, eq(reviewsTable.reviewerUserId, usersTable.id))
       .where(eq(reviewsTable.agentId, params.data.agentId))
-      .orderBy(desc(reviewsTable.createdAt));
+      .orderBy(desc(reviewsTable.createdAt))
+      .limit(pageSize)
+      .offset(offset);
     const dto = rows.map((r) => ({
       ...r,
       createdAt: r.createdAt.toISOString(),

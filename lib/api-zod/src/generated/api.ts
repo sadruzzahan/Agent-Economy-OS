@@ -672,9 +672,12 @@ export const ListWalletTransactionsResponse = zod.array(
 /**
  * @summary Get the top agents leaderboard
  */
+export const getLeaderboardQueryPageDefault = 1;
+
 export const GetLeaderboardQueryParams = zod.object({
   capabilityId: zod.coerce.number().optional(),
   limit: zod.coerce.number().optional(),
+  page: zod.coerce.number().default(getLeaderboardQueryPageDefault),
 });
 
 export const GetLeaderboardResponseItem = zod.object({
@@ -729,6 +732,14 @@ export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem);
  */
 export const ListAgentReviewsParams = zod.object({
   agentId: zod.coerce.number(),
+});
+
+export const listAgentReviewsQueryPageDefault = 1;
+export const listAgentReviewsQueryPageSizeDefault = 10;
+
+export const ListAgentReviewsQueryParams = zod.object({
+  page: zod.coerce.number().default(listAgentReviewsQueryPageDefault),
+  pageSize: zod.coerce.number().default(listAgentReviewsQueryPageSizeDefault),
 });
 
 export const listAgentReviewsResponseRatingMax = 5;

@@ -3,7 +3,7 @@ import { SignedInLayout } from "@/components/layout";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useCreateTask, useListCapabilities, useGetMe } from "@workspace/api-client-react";
+import { useCreateTask, useListCapabilities, useGetMe, useGetAgent } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -12,8 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useLocation } from "wouter";
-import { formatCurrency } from "@/lib/format";
-import { AlertCircle } from "lucide-react";
+import { formatCurrency, formatReputation } from "@/lib/format";
+import { AlertCircle, UserCheck } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const formSchema = z.object({
@@ -41,6 +41,12 @@ export default function NewTask() {
   const { data: capabilities } = useListCapabilities();
   const { data: me } = useGetMe();
   const createTask = useCreateTask();
+
+  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const preSelectedAgentId = searchParams.get("agentId") ? parseInt(searchParams.get("agentId")!, 10) : undefined;
+  const { data: preSelectedAgent } = useGetAgent(preSelectedAgentId!, {
+    query: { enabled: !!preSelectedAgentId },
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -76,7 +82,10 @@ export default function NewTask() {
     createTask.mutate({ data: reqData }, {
       onSuccess: (task) => {
         toast({ title: "Task created successfully" });
-        setLocation(`/tasks/${task.id}`);
+        const destination = preSelectedAgentId
+          ? `/tasks/${task.id}?assignAgentId=${preSelectedAgentId}`
+          : `/tasks/${task.id}`;
+        setLocation(destination);
       },
       onError: (err) => {
         toast({
@@ -96,6 +105,20 @@ export default function NewTask() {
             <h1 className="text-3xl font-bold tracking-tight">Post a Task</h1>
             <p className="text-muted-foreground">Create a new work request for the agent market.</p>
           </div>
+
+          {preSelectedAgent && (
+            <Alert className="border-primary/30 bg-primary/5">
+              <UserCheck className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-primary">Hiring for a specific agent</AlertTitle>
+              <AlertDescription>
+                After posting, you'll be able to assign this task directly to{" "}
+                <span className="font-semibold">{preSelectedAgent.name}</span>{" "}
+                <span className="text-muted-foreground">(@{preSelectedAgent.handle})</span>{" "}
+                — reputation score{" "}
+                <span className="font-semibold text-amber-600">{formatReputation(preSelectedAgent.reputationScore)}</span>.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">

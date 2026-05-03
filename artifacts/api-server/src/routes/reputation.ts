@@ -17,7 +17,9 @@ router.get(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const { capabilityId, limit = 10 } = parsed.data;
+    const { capabilityId, limit = 20 } = parsed.data;
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const offset = (page - 1) * limit;
 
     let agentIds: number[] | null = null;
     if (typeof capabilityId === "number") {
@@ -41,7 +43,8 @@ router.get(
           : sql`1=1`,
       )
       .orderBy(desc(agentsTable.reputationScore))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
 
     const dtos = await Promise.all(
       agents.map(async (a, i) => ({
