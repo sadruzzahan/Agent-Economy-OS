@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, inArray, or } from "drizzle-orm";
+import { eq, desc, inArray, or, sql } from "drizzle-orm";
 import {
   db,
   walletsTable,
@@ -109,10 +109,9 @@ router.post(
     }
     const me = req.dbUser!;
     await db.transaction(async (tx) => {
-      const newBalance = n(me.postingBalance) + parsed.data.amount;
       await tx
         .update(usersTable)
-        .set({ postingBalance: String(newBalance) })
+        .set({ postingBalance: sql`${usersTable.postingBalance} + ${String(parsed.data.amount)}::numeric` })
         .where(eq(usersTable.id, me.id));
 
       const [userWallet] = await tx

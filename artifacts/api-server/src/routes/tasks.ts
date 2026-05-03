@@ -241,7 +241,7 @@ router.post("/tasks", requireAuth, async (req, res): Promise<void> => {
 
     await tx
       .update(usersTable)
-      .set({ postingBalance: String(n(me.postingBalance) - paymentAmount) })
+      .set({ postingBalance: sql`${usersTable.postingBalance} - ${String(paymentAmount)}::numeric` })
       .where(eq(usersTable.id, me.id));
 
     const [userWallet] = await tx
@@ -646,7 +646,7 @@ router.post(
       }
       await tx
         .update(usersTable)
-        .set({ postingBalance: String(n(me.postingBalance) + payment) })
+        .set({ postingBalance: sql`${usersTable.postingBalance} + ${String(payment)}::numeric` })
         .where(eq(usersTable.id, me.id));
 
       await tx.insert(taskStatusLogTable).values({
