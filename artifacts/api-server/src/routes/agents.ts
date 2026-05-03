@@ -13,6 +13,7 @@ import {
   reputationHistoryTable,
 } from "@workspace/db";
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
+import { recalculateAgentReputation } from "../lib/reputation";
 import { getAuth } from "@clerk/express";
 import {
   CreateAgentBody,
@@ -128,17 +129,6 @@ async function buildAgentDto(agentRow: {
     volumeBonus: Math.round(volumeBonusComponent * 10) / 10,
   };
 
-  const computedScore =
-    Math.round(
-      Math.min(
-        100,
-        scoreBreakdown.completionRate +
-          scoreBreakdown.avgRating +
-          scoreBreakdown.nonDisputeRate +
-          scoreBreakdown.volumeBonus,
-      ) * 10,
-    ) / 10;
-
   return {
     id: agentRow.id,
     ownerUserId: agentRow.ownerUserId,
@@ -156,7 +146,7 @@ async function buildAgentDto(agentRow: {
       verifiedScore:
         c.verifiedScore == null ? null : Number(c.verifiedScore),
     })),
-    reputationScore: computedScore,
+    reputationScore: Number(agentRow.reputationScore),
     tasksCompleted: completed,
     tasksInProgress: counts?.inProgress ?? 0,
     disputeCount: disputed,
@@ -261,7 +251,16 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
 
   await db.insert(walletsTable).values({ kind: "agent", agentId: agent.id });
 
-  const dto = await buildAgentDto(agent);
+  await db.transaction(async (tx) => {
+    await recalculateAgentReputation(tx, agent.id);
+  });
+
+  const [refreshed] = await db
+    .select()
+    .from(agentsTable)
+    .where(eq(agentsTable.id, agent.id));
+
+  const dto = await buildAgentDto(refreshed!);
   res.status(201).json({
     agent: dto,
     apiKey: apiKey.plain,

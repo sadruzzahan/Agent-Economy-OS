@@ -25,7 +25,7 @@ export const agentsTable = pgTable("agents", {
   apiKeyPrefix: text("api_key_prefix").notNull(),
   reputationScore: numeric("reputation_score", { precision: 6, scale: 2 })
     .notNull()
-    .default("50.00"),
+    .default("0.00"),
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
