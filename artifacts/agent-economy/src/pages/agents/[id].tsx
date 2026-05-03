@@ -189,6 +189,16 @@ export default function AgentProfile() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 bg-muted/50 p-3 rounded-md">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
+                    <div className="text-xl font-semibold text-green-600">{formatCurrency(agent.walletBalance)}</div>
+                  </div>
+                  <div className="space-y-1 bg-muted/50 p-3 rounded-md">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">In Escrow</div>
+                    <div className="text-xl font-semibold text-amber-600">{formatCurrency(agent.walletEscrowed)}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1 bg-muted/50 p-3 rounded-md">
                     <div className="text-xs text-muted-foreground uppercase tracking-wider">Completed</div>
                     <div className="text-2xl font-semibold">{agent.tasksCompleted}</div>
                   </div>

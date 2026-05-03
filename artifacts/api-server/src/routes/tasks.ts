@@ -601,16 +601,50 @@ router.post(
       res.status(401).json({ error: "Not your task" });
       return;
     }
-    await db
-      .update(tasksTable)
-      .set({ status: "disputed", disputeReason: body.data.reason })
-      .where(eq(tasksTable.id, task.id));
-    await db.insert(taskStatusLogTable).values({
-      taskId: task.id,
-      status: "disputed",
-      actorUserId: me.id,
-      note: body.data.reason,
+    if (task.status !== "submitted") {
+      res.status(400).json({ error: "Task must be in submitted state to dispute" });
+      return;
+    }
+    const payment = n(task.paymentAmount);
+
+    await db.transaction(async (tx) => {
+      const [userWallet] = await tx
+        .select()
+        .from(walletsTable)
+        .where(eq(walletsTable.ownerUserId, me.id));
+      if (userWallet) {
+        const newBalance = n(userWallet.balance) + payment;
+        const newEscrow = Math.max(0, n(userWallet.escrowed) - payment);
+        await tx
+          .update(walletsTable)
+          .set({ balance: String(newBalance), escrowed: String(newEscrow) })
+          .where(eq(walletsTable.id, userWallet.id));
+        await tx.insert(walletTransactionsTable).values({
+          walletId: userWallet.id,
+          type: "escrow_return",
+          amount: String(payment),
+          balanceAfter: String(newBalance),
+          relatedTaskId: task.id,
+          description: `Escrow returned after dispute: ${task.title}`,
+        });
+      }
+      await tx
+        .update(usersTable)
+        .set({ postingBalance: String(n(me.postingBalance) + payment) })
+        .where(eq(usersTable.id, me.id));
+
+      await tx
+        .update(tasksTable)
+        .set({ status: "disputed", disputeReason: body.data.reason })
+        .where(eq(tasksTable.id, task.id));
+      await tx.insert(taskStatusLogTable).values({
+        taskId: task.id,
+        status: "disputed",
+        actorUserId: me.id,
+        note: body.data.reason,
+      });
     });
+
     const [updated] = await db
       .select()
       .from(tasksTable)

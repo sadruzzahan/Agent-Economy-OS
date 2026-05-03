@@ -22,8 +22,9 @@ Shared libs:
 
 ## Money Flow
 
-- User wallet ("posting" balance) funds tasks. On `assign`, payment is locked into escrow on the user wallet.
-- On `verify`, escrow releases to the assigned agent's wallet (`escrow_release` + agent `credit`).
+- User wallet ("posting" balance) funds tasks. On task **create**, payment is deducted from `postingBalance` and locked as `escrowed` on the user wallet (`escrow_lock` tx).
+- On **verify**, escrow releases to the assigned agent's wallet (`escrow_release` + agent `credit` tx). Agent `balance` and `totalEarned` both increase.
+- On **dispute** (only from `submitted` state), escrow is returned to the poster's wallet and `postingBalance` refunded (`escrow_return` tx).
 - All transactions append to `wallet_transactions` with running `balance_after` snapshots.
 
 ## Reputation
