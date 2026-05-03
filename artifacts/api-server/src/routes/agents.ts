@@ -16,6 +16,9 @@ import {
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
 import { recalculateAgentReputation, computeReputationScore } from "../lib/reputation";
 import { getAuth } from "@clerk/express";
+import { audit } from "../lib/audit";
+import { agentKeyLimit } from "../middlewares/rateLimits";
+import { Errors } from "../lib/errors";
 import {
   CreateAgentBody,
   GetAgentParams,
@@ -250,6 +253,16 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
     .where(eq(agentsTable.id, agent.id));
 
   const dto = await buildAgentDto(refreshed!);
+  await audit(req, {
+    action: "agent.create",
+    targetType: "agent",
+    targetId: agent.id,
+    after: {
+      name: agent.name,
+      handle: agent.handle,
+      capabilityIds,
+    },
+  });
   res.status(201).json({
     agent: dto,
     apiKey: apiKey.plain,
@@ -326,6 +339,22 @@ router.patch("/agents/:agentId", requireAuth, async (req, res): Promise<void> =>
     .select()
     .from(agentsTable)
     .where(eq(agentsTable.id, agent.id));
+  await audit(req, {
+    action: "agent.update",
+    targetType: "agent",
+    targetId: agent.id,
+    before: {
+      name: agent.name,
+      description: agent.description,
+      status: agent.status,
+    },
+    after: {
+      name: updated?.name,
+      description: updated?.description,
+      status: updated?.status,
+      capabilityIds: body.data.capabilityIds ?? undefined,
+    },
+  });
   const dto = await buildAgentDto(updated!);
   res.json(UpdateAgentResponse.parse(dto));
 });
@@ -356,7 +385,92 @@ router.delete(
       .update(agentsTable)
       .set({ status: "inactive" })
       .where(eq(agentsTable.id, agent.id));
+    await audit(req, {
+      action: "agent.deactivate",
+      targetType: "agent",
+      targetId: agent.id,
+      before: { status: agent.status },
+      after: { status: "inactive" },
+    });
     res.sendStatus(204);
+  },
+);
+
+/**
+ * Rotate the agent's API key. Revokes the previous key (the old hash is
+ * overwritten so it can no longer authenticate) and returns a brand-new
+ * plaintext key exactly once. Owner-only; rate-limited so a stolen
+ * dashboard session can't churn keys.
+ */
+router.post(
+  "/agents/:agentId/rotate-key",
+  requireAuth,
+  agentKeyLimit,
+  async (req, res, next): Promise<void> => {
+    try {
+      const params = DeactivateAgentParams.safeParse(req.params);
+      if (!params.success) {
+        throw Errors.badRequest(params.error.message);
+      }
+      const me = req.dbUser!;
+      const [agent] = await db
+        .select()
+        .from(agentsTable)
+        .where(eq(agentsTable.id, params.data.agentId));
+      if (!agent) throw Errors.notFound("Agent not found");
+      if (agent.ownerUserId !== me.id) {
+        throw Errors.forbidden("Only the agent owner can rotate its API key");
+      }
+
+      const fresh = generateApiKey();
+      const rotatedAt = new Date();
+
+      // Atomic rotation: only succeed if the row's hash is still the one
+      // we read above. A racing second rotation will see no rows updated
+      // and we return 409 so the caller knows their issued key was never
+      // valid. This eliminates the "two concurrent rotations both think
+      // they won" race.
+      const updated = await db
+        .update(agentsTable)
+        .set({
+          apiKeyHash: fresh.hash,
+          apiKeyPrefix: fresh.prefix,
+          apiKeyRotatedAt: rotatedAt,
+          apiKeyLastUsedAt: null,
+          apiKeyLastUsedIp: null,
+        })
+        .where(
+          and(
+            eq(agentsTable.id, agent.id),
+            eq(agentsTable.apiKeyHash, agent.apiKeyHash),
+          ),
+        )
+        .returning({ id: agentsTable.id });
+      if (updated.length === 0) {
+        throw Errors.conflict(
+          "Key was rotated concurrently — please retry",
+        );
+      }
+
+      await audit(req, {
+        action: "agent.key_rotate",
+        targetType: "agent",
+        targetId: agent.id,
+        before: { apiKeyPrefix: agent.apiKeyPrefix },
+        after: {
+          apiKeyPrefix: fresh.prefix,
+          rotatedAt: rotatedAt.toISOString(),
+        },
+      });
+
+      res.status(200).json({
+        apiKey: fresh.plain,
+        apiKeyPrefix: fresh.prefix,
+        rotatedAt: rotatedAt.toISOString(),
+      });
+    } catch (err) {
+      next(err);
+    }
   },
 );
 

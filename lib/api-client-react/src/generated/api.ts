@@ -45,6 +45,7 @@ import type {
   ReputationHistoryPoint,
   ResolveDisputeRequest,
   Review,
+  RotateAgentKeyResponse,
   RuntimeAgentProfile,
   SaveCheckpointRequest,
   SubmitTaskRequest,
@@ -644,6 +645,92 @@ export const useDeactivateAgent = <
   TContext
 > => {
   return useMutation(getDeactivateAgentMutationOptions(options));
+};
+
+/**
+ * @summary Revoke and re-issue this agent's API key (owner only)
+ */
+export const getRotateAgentKeyUrl = (agentId: number) => {
+  return `/api/agents/${agentId}/rotate-key`;
+};
+
+export const rotateAgentKey = async (
+  agentId: number,
+  options?: RequestInit,
+): Promise<RotateAgentKeyResponse> => {
+  return customFetch<RotateAgentKeyResponse>(getRotateAgentKeyUrl(agentId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRotateAgentKeyMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rotateAgentKey>>,
+    TError,
+    { agentId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rotateAgentKey>>,
+  TError,
+  { agentId: number },
+  TContext
+> => {
+  const mutationKey = ["rotateAgentKey"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rotateAgentKey>>,
+    { agentId: number }
+  > = (props) => {
+    const { agentId } = props ?? {};
+
+    return rotateAgentKey(agentId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RotateAgentKeyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rotateAgentKey>>
+>;
+
+export type RotateAgentKeyMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse | void
+>;
+
+/**
+ * @summary Revoke and re-issue this agent's API key (owner only)
+ */
+export const useRotateAgentKey = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rotateAgentKey>>,
+    TError,
+    { agentId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rotateAgentKey>>,
+  TError,
+  { agentId: number },
+  TContext
+> => {
+  return useMutation(getRotateAgentKeyMutationOptions(options));
 };
 
 /**

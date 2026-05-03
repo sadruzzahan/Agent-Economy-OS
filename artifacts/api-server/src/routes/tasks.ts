@@ -16,6 +16,11 @@ import {
 import { requireAuth, getOrCreateDbUser } from "../lib/auth";
 import { recalculateAgentReputation } from "../lib/reputation";
 import { getAuth } from "@clerk/express";
+import { audit } from "../lib/audit";
+import {
+  taskActionLimit,
+  walletLimit,
+} from "../middlewares/rateLimits";
 import {
   CreateTaskBody,
   GetTaskParams,
@@ -203,7 +208,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
   res.json(ListTasksResponse.parse(dtos));
 });
 
-router.post("/tasks", requireAuth, async (req, res): Promise<void> => {
+router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> => {
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -292,6 +297,12 @@ router.post("/tasks", requireAuth, async (req, res): Promise<void> => {
   });
 
   const dto = await buildTaskSummary(task);
+  await audit(req, {
+    action: "task.create",
+    targetType: "task",
+    targetId: task.id,
+    after: { title, paymentAmount, capabilityIds },
+  });
   res.status(201).json(dto);
 });
 
@@ -316,6 +327,7 @@ router.get("/tasks/:taskId", async (req, res): Promise<void> => {
 router.post(
   "/tasks/:taskId/assign",
   requireAuth,
+  taskActionLimit,
   async (req, res): Promise<void> => {
     const params = AssignTaskParams.safeParse(req.params);
     const body = AssignTaskBody.safeParse(req.body);
@@ -366,6 +378,13 @@ router.post(
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
+    await audit(req, {
+      action: "task.assign",
+      targetType: "task",
+      targetId: task.id,
+      before: { status: task.status, assignedAgentId: task.assignedAgentId },
+      after: { status: "assigned", assignedAgentId: agent.id },
+    });
     const dto = await buildTaskSummary(updated!);
     res.json(AssignTaskResponse.parse(dto));
   },
@@ -418,6 +437,13 @@ router.post(
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
+    await audit(req, {
+      action: "task.start",
+      targetType: "task",
+      targetId: task.id,
+      before: { status: task.status },
+      after: { status: "in_progress", agentId: agent.id },
+    });
     res.json(StartTaskResponse.parse(await buildTaskSummary(updated!)));
   },
 );
@@ -475,6 +501,13 @@ router.post(
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
+    await audit(req, {
+      action: "task.submit",
+      targetType: "task",
+      targetId: task.id,
+      before: { status: task.status },
+      after: { status: "submitted", agentId: agent.id },
+    });
     res.json(SubmitTaskResultResponse.parse(await buildTaskSummary(updated!)));
   },
 );
@@ -482,6 +515,7 @@ router.post(
 router.post(
   "/tasks/:taskId/verify",
   requireAuth,
+  taskActionLimit,
   async (req, res): Promise<void> => {
     const params = VerifyTaskParams.safeParse(req.params);
     const body = VerifyTaskBody.safeParse(req.body);
@@ -587,6 +621,17 @@ router.post(
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
+    await audit(req, {
+      action: "task.verify",
+      targetType: "task",
+      targetId: task.id,
+      before: { status: "submitted" },
+      after: {
+        status: "complete",
+        rating: body.data.rating ?? null,
+        paymentReleased: payment,
+      },
+    });
     res.json(VerifyTaskResponse.parse(await buildTaskSummary(updated!)));
   },
 );
@@ -594,6 +639,7 @@ router.post(
 router.post(
   "/tasks/:taskId/dispute",
   requireAuth,
+  taskActionLimit,
   async (req, res): Promise<void> => {
     const params = DisputeTaskParams.safeParse(req.params);
     const body = DisputeTaskBody.safeParse(req.body);
@@ -671,6 +717,13 @@ router.post(
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
+    await audit(req, {
+      action: "task.dispute",
+      targetType: "task",
+      targetId: task.id,
+      before: { status: "submitted" },
+      after: { status: "disputed", reason: body.data.reason },
+    });
     res.json(DisputeTaskResponse.parse(await buildTaskSummary(updated!)));
   },
 );
@@ -678,6 +731,7 @@ router.post(
 router.post(
   "/tasks/:taskId/resolve-dispute",
   requireAuth,
+  taskActionLimit,
   async (req, res): Promise<void> => {
     const params = ResolveDisputeParams.safeParse(req.params);
     const body = ResolveDisputeBody.safeParse(req.body);
@@ -733,6 +787,13 @@ router.post(
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.id, task.id));
+    await audit(req, {
+      action: "task.dispute_resolve",
+      targetType: "task",
+      targetId: task.id,
+      before: { disputeOutcome: task.disputeOutcome },
+      after: { disputeOutcome: body.data.outcome },
+    });
     res.json(ResolveDisputeResponse.parse(await buildTaskSummary(updated!)));
   },
 );

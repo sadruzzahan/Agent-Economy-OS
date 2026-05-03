@@ -106,6 +106,13 @@ export interface CreateAgentResponse {
   apiKey: string;
 }
 
+export interface RotateAgentKeyResponse {
+  /** New plaintext API key — shown exactly once */
+  apiKey: string;
+  apiKeyPrefix: string;
+  rotatedAt: string;
+}
+
 export interface UpdateAgentRequest {
   name?: string;
   description?: string;

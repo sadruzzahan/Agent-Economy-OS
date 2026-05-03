@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db, agentsTable } from "@workspace/db";
 import type { Agent } from "@workspace/db";
+import { createRateLimit, getClientIp } from "../lib/rate-limit";
 
 declare global {
   namespace Express {
@@ -12,75 +13,83 @@ declare global {
   }
 }
 
-// In-memory rate limiter: 100 requests/minute per hashed API key.
-// Expired entries are evicted on access and periodically via a sweep so the Map
-// does not grow unbounded under high-cardinality invalid-key traffic.
-const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
-
-// Sweep expired buckets every 5 minutes to bound memory usage
-const SWEEP_INTERVAL_MS = 5 * 60_000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, bucket] of rateLimitBuckets) {
-    if (now >= bucket.resetAt) rateLimitBuckets.delete(key);
-  }
-}, SWEEP_INTERVAL_MS).unref(); // unref so this timer doesn't keep the process alive
-
-function checkRateLimit(keyHash: string): boolean {
-  const now = Date.now();
-  const windowMs = 60_000;
-  const limit = 100;
-  const bucket = rateLimitBuckets.get(keyHash);
-  if (!bucket || now >= bucket.resetAt) {
-    // Evict stale entry on access before setting the new window
-    rateLimitBuckets.set(keyHash, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (bucket.count >= limit) return false;
-  bucket.count++;
-  return true;
-}
+// Per-hashed-key rate limiter: 100 requests/minute. Backed by the shared
+// in-memory store with bounded eviction.
+const apiKeyRateLimit = createRateLimit({
+  bucket: "api-key",
+  windowMs: 60_000,
+  limit: 100,
+  // The key extractor runs before we attach the agent, so derive directly
+  // from the bearer token (hashed for safety).
+  keyFn: (req: Request) => {
+    const authHeader = req.headers["authorization"] ?? "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+    if (!token) return `ip:${getClientIp(req)}`;
+    return `hash:${crypto.createHash("sha256").update(token).digest("hex")}`;
+  },
+});
 
 export async function requireApiKeyAuth(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const authHeader = req.headers["authorization"];
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <api_key>" });
-    return;
-  }
-  const token = authHeader.slice(7).trim();
-  if (!token) {
-    res.status(401).json({ error: "Missing API key" });
-    return;
-  }
+  // Apply the rate limit first so unknown-key floods don't hit the DB.
+  apiKeyRateLimit(req, res, async (limitErr) => {
+    if (limitErr) return next(limitErr);
 
-  const keyHash = crypto.createHash("sha256").update(token).digest("hex");
+    const authHeader = req.headers["authorization"];
+    if (!authHeader?.startsWith("Bearer ")) {
+      res.status(401).json({
+        error:
+          "Missing or invalid Authorization header. Use: Authorization: Bearer <api_key>",
+        code: "unauthorized",
+      });
+      return;
+    }
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      res.status(401).json({ error: "Missing API key", code: "unauthorized" });
+      return;
+    }
 
-  if (!checkRateLimit(keyHash)) {
-    res.status(429).json({ error: "Rate limit exceeded. Max 100 requests/minute per agent key." });
-    return;
-  }
+    const keyHash = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
 
-  const [agent] = await db
-    .select()
-    .from(agentsTable)
-    .where(eq(agentsTable.apiKeyHash, keyHash));
+    try {
+      const [agent] = await db
+        .select()
+        .from(agentsTable)
+        .where(eq(agentsTable.apiKeyHash, keyHash));
 
-  if (!agent || agent.status !== "active") {
-    res.status(401).json({ error: "Invalid API key or inactive agent" });
-    return;
-  }
+      if (!agent || agent.status !== "active") {
+        res.status(401).json({
+          error: "Invalid API key or inactive agent",
+          code: "unauthorized",
+        });
+        return;
+      }
 
-  req.apiKeyAgent = agent;
+      req.apiKeyAgent = agent;
 
-  // Update last_active_at (fire and forget — non-blocking)
-  db.update(agentsTable)
-    .set({ lastActiveAt: new Date() })
-    .where(eq(agentsTable.id, agent.id))
-    .catch(() => {});
+      // Update last-used telemetry. Fire and forget.
+      const ip = getClientIp(req);
+      db.update(agentsTable)
+        .set({
+          lastActiveAt: new Date(),
+          apiKeyLastUsedAt: new Date(),
+          apiKeyLastUsedIp: ip,
+        })
+        .where(eq(agentsTable.id, agent.id))
+        .catch(() => {});
 
-  next();
+      next();
+    } catch (err) {
+      next(err);
+    }
+  });
 }

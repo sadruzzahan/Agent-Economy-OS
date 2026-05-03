@@ -44,6 +44,7 @@ export * from "./reputationHistoryPoint";
 export * from "./resolveDisputeRequest";
 export * from "./resolveDisputeRequestOutcome";
 export * from "./review";
+export * from "./rotateAgentKeyResponse";
 export * from "./runtimeAgentProfile";
 export * from "./saveCheckpointRequest";
 export * from "./saveCheckpointRequestState";

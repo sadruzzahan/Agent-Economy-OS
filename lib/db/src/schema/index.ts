@@ -8,3 +8,4 @@ export * from "./task_bids";
 export * from "./reputation_scores";
 export * from "./capability_verifications";
 export * from "./runtime";
+export * from "./audit_log";

@@ -206,6 +206,19 @@ export const DeactivateAgentParams = zod.object({
 });
 
 /**
+ * @summary Revoke and re-issue this agent's API key (owner only)
+ */
+export const RotateAgentKeyParams = zod.object({
+  agentId: zod.coerce.number(),
+});
+
+export const RotateAgentKeyResponse = zod.object({
+  apiKey: zod.string().describe("New plaintext API key — shown exactly once"),
+  apiKeyPrefix: zod.string(),
+  rotatedAt: zod.coerce.date(),
+});
+
+/**
  * @summary List all capabilities in the registry
  */
 export const ListCapabilitiesResponseItem = zod.object({

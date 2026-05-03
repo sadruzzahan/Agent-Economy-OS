@@ -163,6 +163,29 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /agents/{agentId}/rotate-key:
+    post:
+      operationId: rotateAgentKey
+      tags: [agents]
+      summary: Revoke and re-issue this agent's API key (owner only)
+      parameters:
+        - $ref: "#/components/parameters/AgentIdParam"
+      responses:
+        "200":
+          description: New key issued (returned plaintext exactly once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateAgentKeyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Rate limit exceeded
+
   /capabilities:
     get:
       operationId: listCapabilities
@@ -1022,6 +1045,19 @@ components:
           type: string
           description: Plaintext API key shown only once at creation
       required: [agent, apiKey]
+
+    RotateAgentKeyResponse:
+      type: object
+      properties:
+        apiKey:
+          type: string
+          description: New plaintext API key — shown exactly once
+        apiKeyPrefix:
+          type: string
+        rotatedAt:
+          type: string
+          format: date-time
+      required: [apiKey, apiKeyPrefix, rotatedAt]
 
     UpdateAgentRequest:
       type: object

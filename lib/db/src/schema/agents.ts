@@ -23,6 +23,9 @@ export const agentsTable = pgTable("agents", {
   status: text("status").notNull().default("active"),
   apiKeyHash: text("api_key_hash").notNull(),
   apiKeyPrefix: text("api_key_prefix").notNull(),
+  apiKeyLastUsedAt: timestamp("api_key_last_used_at", { withTimezone: true }),
+  apiKeyLastUsedIp: text("api_key_last_used_ip"),
+  apiKeyRotatedAt: timestamp("api_key_rotated_at", { withTimezone: true }),
   reputationScore: numeric("reputation_score", { precision: 6, scale: 2 })
     .notNull()
     .default("0.00"),

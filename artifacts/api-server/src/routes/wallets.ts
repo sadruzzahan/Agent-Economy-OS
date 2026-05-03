@@ -9,6 +9,8 @@ import {
   tasksTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { audit } from "../lib/audit";
+import { walletLimit } from "../middlewares/rateLimits";
 import {
   ListMyWalletsResponse,
   ListWalletTransactionsQueryParams,
@@ -101,6 +103,7 @@ router.get(
 router.post(
   "/wallets/topup",
   requireAuth,
+  walletLimit,
   async (req, res): Promise<void> => {
     const parsed = TopUpBalanceBody.safeParse(req.body);
     if (!parsed.success) {
@@ -132,6 +135,13 @@ router.post(
           description: "Wallet top-up",
         });
       }
+    });
+
+    await audit(req, {
+      action: "wallet.topup",
+      targetType: "wallet",
+      targetId: me.id,
+      after: { amount: parsed.data.amount },
     });
 
     const summary = await buildWalletSummary(me.id);

@@ -5,21 +5,35 @@ import {
   useGetAgentReputationHistory,
   useListAgentReviews,
   useGetAgentActivity,
+  useGetMe,
+  useRotateAgentKey,
   getGetAgentQueryKey,
   getGetAgentReputationHistoryQueryKey,
   getListAgentReviewsQueryKey,
   getGetAgentActivityQueryKey,
+  getGetMeQueryKey,
 } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CapabilityBadges } from "@/components/capability-badges";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatCurrency, formatReputation, formatDate } from "@/lib/format";
 import { AgentStatusBadge } from "@/components/status-badge";
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Sparkles, Activity, Star } from "lucide-react";
+import { Sparkles, Activity, Star, KeyRound, Copy, Check, AlertTriangle, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 function ScoreBar({
   label,
@@ -128,6 +142,167 @@ function RuntimeActivityTab({ agentId }: { agentId: number }) {
   );
 }
 
+function RotateKeyCard({ agentId }: { agentId: number }) {
+  const [open, setOpen] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+
+  const mutation = useRotateAgentKey({
+    mutation: {
+      onSuccess: (data) => {
+        setNewKey(data.apiKey);
+        setConfirmed(false);
+      },
+      onError: (err) => {
+        toast({
+          title: "Could not rotate key",
+          description:
+            err instanceof Error ? err.message : "Please try again.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function reset() {
+    setOpen(false);
+    setNewKey(null);
+    setConfirmed(false);
+    setCopied(false);
+    mutation.reset();
+  }
+
+  async function copyKey() {
+    if (!newKey) return;
+    try {
+      await navigator.clipboard.writeText(newKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Select the key and copy it manually.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <KeyRound className="h-4 w-4" />
+            API key
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            Rotate this agent's API key if you suspect it has been leaked.
+            The previous key will stop working immediately.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="button-rotate-api-key"
+            onClick={() => setOpen(true)}
+          >
+            Rotate API key
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : reset())}>
+        <DialogContent>
+          {newKey ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>New API key issued</DialogTitle>
+                <DialogDescription>
+                  Copy this now — it will not be shown again. The previous
+                  key has been revoked.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-md border bg-muted p-3 font-mono text-xs break-all select-all">
+                {newKey}
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={copyKey}
+                  data-testid="button-copy-new-key"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 mr-1" /> Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-1" /> Copy key
+                    </>
+                  )}
+                </Button>
+                <Button onClick={reset} data-testid="button-close-key-dialog">
+                  I've saved it
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  Rotate this agent's API key?
+                </DialogTitle>
+                <DialogDescription>
+                  The current key will stop working immediately. Any running
+                  agents will need to be reconfigured with the new key. This
+                  action is logged in the audit trail.
+                </DialogDescription>
+              </DialogHeader>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(e) => setConfirmed(e.target.checked)}
+                  className="mt-1"
+                  data-testid="checkbox-confirm-rotate"
+                />
+                <span>
+                  I understand the previous key will be revoked and cannot
+                  be recovered.
+                </span>
+              </label>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={reset}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={!confirmed || mutation.isPending}
+                  onClick={() => mutation.mutate({ agentId })}
+                  data-testid="button-confirm-rotate"
+                >
+                  {mutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Rotating...
+                    </>
+                  ) : (
+                    "Rotate key"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export default function AgentProfile() {
   const { id } = useParams<{ id: string }>();
   const agentId = parseInt(id || "0", 10);
@@ -135,6 +310,8 @@ export default function AgentProfile() {
   const { data: agent, isLoading: isLoadingAgent } = useGetAgent(agentId, { query: { enabled: !!agentId, queryKey: getGetAgentQueryKey(agentId) } });
   const { data: history, isLoading: isLoadingHistory } = useGetAgentReputationHistory(agentId, { query: { enabled: !!agentId, queryKey: getGetAgentReputationHistoryQueryKey(agentId) } });
   const { data: reviews, isLoading: isLoadingReviews } = useListAgentReviews(agentId, undefined, { query: { enabled: !!agentId, queryKey: getListAgentReviewsQueryKey(agentId) } });
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const isOwner = !!me && !!agent && me.id === agent.ownerUserId;
 
   if (isLoadingAgent) {
     return (
@@ -408,6 +585,8 @@ export default function AgentProfile() {
                 </div>
               </CardContent>
             </Card>
+
+            {isOwner && <RotateKeyCard agentId={agentId} />}
           </div>
         </div>
       </div>
