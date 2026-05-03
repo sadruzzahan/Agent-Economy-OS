@@ -211,20 +211,27 @@ describe("cross-owner hire: task from user A can be assigned to user B's agent",
     expect(task?.postedByUserId).not.toBe(agent?.ownerUserId);
   });
 
-  it("dispute resolved as poster_fault: agent not penalised in reputation score", async () => {
-    // Set task to disputed state with poster_fault outcome (agent cleared)
+  it("dispute resolved as poster_fault: agent not penalised vs brand-new baseline", async () => {
+    // Capture brand-new agent score (no tasks at all)
+    const brandNewResult = await db.transaction(async (tx) =>
+      recalculateAgentReputation(tx, externalAgentId),
+    );
+
+    // Now set the task to a poster_fault dispute (agent cleared by adjudication)
     await db
       .update(tasksTable)
       .set({ status: "disputed", assignedAgentId: externalAgentId, disputeOutcome: "poster_fault" })
       .where(eq(tasksTable.id, testTaskId));
 
-    const result = await db.transaction(async (tx) => {
-      return recalculateAgentReputation(tx, externalAgentId);
-    });
+    const result = await db.transaction(async (tx) =>
+      recalculateAgentReputation(tx, externalAgentId),
+    );
 
-    // poster_fault dispute is NOT counted as agent_fault → disputed count = 0
-    // → nonDisputeRate = 15 (maximum, no penalty applied)
-    expect(result.breakdown.nonDisputeRate).toBe(15);
+    // poster_fault is excluded from totalAssigned AND from disputed count →
+    // no penalty vs brand-new baseline (score is unchanged, not lower)
+    expect(result.score).toBe(brandNewResult.score);
+    expect(result.breakdown.completionRate).toBe(brandNewResult.breakdown.completionRate);
+    expect(result.breakdown.nonDisputeRate).toBe(brandNewResult.breakdown.nonDisputeRate);
   });
 
   it("dispute resolved as agent_fault: agent IS penalised in reputation score", async () => {
@@ -250,19 +257,58 @@ describe("cross-owner hire: task from user A can be assigned to user B's agent",
       .set({ status: "disputed", assignedAgentId: externalAgentId, disputeOutcome: "poster_fault" })
       .where(eq(tasksTable.id, testTaskId));
 
-    // Manually count what buildAgentDto will compute for dispute count
+    // Manually count what buildAgentDto will compute — mirrors the fixed SQL that
+    // excludes poster_fault disputes from both the dispute count and totalAssigned.
     const [agentFaultCount] = await db
       .select({
         disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'agent_fault')::int`,
-        totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} != 'open')::int`,
+        totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} != 'open' and not (${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'poster_fault'))::int`,
       })
       .from(tasksTable)
       .where(eq(tasksTable.assignedAgentId, externalAgentId));
 
     // poster_fault dispute → disputed count = 0
     expect(agentFaultCount?.disputed ?? 0).toBe(0);
-    // Task is counted in totalAssigned (status = 'disputed' != 'open')
-    expect(agentFaultCount?.totalAssigned ?? 0).toBe(1);
+    // poster_fault task is excluded from totalAssigned (no completion-rate penalty)
+    expect(agentFaultCount?.totalAssigned ?? 0).toBe(0);
+  });
+
+  it("poster_fault dispute: composite score is not reduced vs no-dispute baseline", async () => {
+    // Baseline: 1 complete task → score should be same as having completed the task cleanly
+    await db
+      .update(tasksTable)
+      .set({ status: "complete", assignedAgentId: externalAgentId })
+      .where(eq(tasksTable.id, testTaskId));
+
+    const baselineResult = await db.transaction(async (tx) => recalculateAgentReputation(tx, externalAgentId));
+
+    // Now add a second task resolved as poster_fault (agent cleared)
+    const [secondTask] = await db
+      .insert(tasksTable)
+      .values({
+        postedByUserId: userAId,
+        title: "Second Task — poster_fault dispute",
+        description: "Should not penalize agent",
+        paymentAmount: "5.00",
+        status: "disputed",
+        assignedAgentId: externalAgentId,
+        disputeOutcome: "poster_fault",
+      })
+      .returning();
+
+    const afterDisputeResult = await db.transaction(async (tx) =>
+      recalculateAgentReputation(tx, externalAgentId),
+    );
+
+    // Clean up the second task
+    if (secondTask) await cleanupTestTask(secondTask.id);
+
+    // Score must not decrease after adding a poster_fault dispute
+    expect(afterDisputeResult.score).toBeGreaterThanOrEqual(baselineResult.score);
+    // completionRate must also be unchanged (poster_fault excluded from denominator)
+    expect(afterDisputeResult.breakdown.completionRate).toBe(baselineResult.breakdown.completionRate);
+    // nonDisputeRate must be unchanged (poster_fault not counted as agent_fault)
+    expect(afterDisputeResult.breakdown.nonDisputeRate).toBe(baselineResult.breakdown.nonDisputeRate);
   });
 
   it("resolve-dispute idempotent: same outcome repeated returns 200 (verified at DB layer)", async () => {
