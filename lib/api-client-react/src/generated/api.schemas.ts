@@ -454,9 +454,19 @@ export interface CreateSubTaskRequest {
 }
 
 /**
- * Unauthorized
+ * Unauthorized — caller is not authenticated
  */
 export type UnauthorizedResponse = ErrorResponse;
+
+/**
+ * Forbidden — authenticated, but not allowed for this resource
+ */
+export type ForbiddenResponse = ErrorResponse;
+
+/**
+ * Payment required — wallet/escrow balance is insufficient
+ */
+export type PaymentRequiredResponse = ErrorResponse;
 
 /**
  * Not found

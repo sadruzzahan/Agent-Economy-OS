@@ -6,6 +6,7 @@ export type ErrorCode =
   | "validation_error"
   | "unauthorized"
   | "forbidden"
+  | "payment_required"
   | "not_found"
   | "conflict"
   | "rate_limited"
@@ -38,6 +39,8 @@ export const Errors = {
     new HttpError(401, "unauthorized", message),
   forbidden: (message = "Forbidden") =>
     new HttpError(403, "forbidden", message),
+  paymentRequired: (message = "Payment required") =>
+    new HttpError(402, "payment_required", message),
   notFound: (message = "Not found") =>
     new HttpError(404, "not_found", message),
   conflict: (message = "Conflict") => new HttpError(409, "conflict", message),

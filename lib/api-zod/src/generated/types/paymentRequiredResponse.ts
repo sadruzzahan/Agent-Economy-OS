@@ -8,6 +8,6 @@
 import type { ErrorResponse } from "./errorResponse";
 
 /**
- * Unauthorized — caller is not authenticated
+ * Payment required — wallet/escrow balance is insufficient
  */
-export type UnauthorizedResponse = ErrorResponse;
+export type PaymentRequiredResponse = ErrorResponse;

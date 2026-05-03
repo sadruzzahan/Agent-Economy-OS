@@ -8,6 +8,6 @@
 import type { ErrorResponse } from "./errorResponse";
 
 /**
- * Unauthorized — caller is not authenticated
+ * Forbidden — authenticated, but not allowed for this resource
  */
-export type UnauthorizedResponse = ErrorResponse;
+export type ForbiddenResponse = ErrorResponse;

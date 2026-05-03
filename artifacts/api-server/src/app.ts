@@ -13,7 +13,11 @@ import { logger } from "./lib/logger";
 import { env, isProduction, getAllowedOrigins } from "./lib/env";
 import { securityHeaders, requestId } from "./lib/security-headers";
 import { errorHandler, Errors } from "./lib/errors";
-import { globalLimit, userBaselineLimit } from "./middlewares/rateLimits";
+import {
+  globalLimit,
+  userBaselineLimit,
+  authLimit,
+} from "./middlewares/rateLimits";
 
 const app: Express = express();
 
@@ -47,8 +51,6 @@ app.use(
     },
   }),
 );
-
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 // CORS lockdown: in production we restrict to ALLOWED_ORIGINS (and the
 // Replit dev domain when set). In development we allow all origins so the
@@ -85,14 +87,14 @@ app.use(
   })),
 );
 
-// Layered rate limits on every API hit:
-//  1. globalLimit — per-IP, the broad anti-scraper ceiling.
-//  2. userBaselineLimit — per-user (falls back to per-IP for anonymous
-//     traffic), so a single account can't flood the API even if it
-//     rotates source IPs. Stricter per-route buckets (auth, wallet,
-//     task-action, agent-key, runtime-mutation) layer on top.
+// The Clerk auth proxy is mounted UNDER /api so the same rate-limit
+// stack applies. We add a stricter per-IP `authLimit` on top because
+// this surface handles sign-in / token-issuance flows that are prime
+// targets for credential-stuffing and brute-force probing. Order
+// matters: globalLimit → userBaselineLimit → authLimit → proxy.
 app.use("/api", globalLimit);
 app.use("/api", userBaselineLimit);
+app.use(CLERK_PROXY_PATH, authLimit, clerkProxyMiddleware());
 
 app.use("/api", router);
 

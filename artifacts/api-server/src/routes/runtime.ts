@@ -450,10 +450,10 @@ router.post(
 
     if (spendErr === "insufficient_balance") {
       await logActivity(agent.id, "POST", ep, 402, ip);
-      // 402 Payment Required: surface via HttpError. Use badRequest with a
-      // clear message — distinct shape from generic 400 because the error
-      // text is the actionable bit.
-      throw Errors.badRequest(
+      // 402 Payment Required is the semantically correct status for a
+      // wallet-balance shortfall. Clients can branch on `code` rather
+      // than parse the message.
+      throw Errors.paymentRequired(
         `Insufficient agent wallet balance. Required: $${amount.toFixed(2)}`,
       );
     }

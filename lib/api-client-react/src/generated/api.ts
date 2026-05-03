@@ -30,7 +30,7 @@ import type {
   CreateTaskRequest,
   DashboardSummary,
   DisputeTaskRequest,
-  ErrorResponse,
+  ForbiddenResponse,
   GetAgentActivityParams,
   GetDashboardActivityParams,
   GetLeaderboardParams,
@@ -41,6 +41,7 @@ import type {
   ListTasksParams,
   ListWalletTransactionsParams,
   NotFoundResponse,
+  PaymentRequiredResponse,
   PlatformStats,
   ReputationHistoryPoint,
   ResolveDisputeRequest,
@@ -669,7 +670,9 @@ export const rotateAgentKey = async (
 };
 
 export const getRotateAgentKeyMutationOptions = <
-  TError = ErrorType<UnauthorizedResponse | NotFoundResponse | void>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | void
+  >,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -711,14 +714,16 @@ export type RotateAgentKeyMutationResult = NonNullable<
 >;
 export type RotateAgentKeyMutationBody = BodyType<RotateAgentKeyRequest>;
 export type RotateAgentKeyMutationError = ErrorType<
-  UnauthorizedResponse | NotFoundResponse | void
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | void
 >;
 
 /**
  * @summary Revoke and re-issue this agent's API key (owner only)
  */
 export const useRotateAgentKey = <
-  TError = ErrorType<UnauthorizedResponse | NotFoundResponse | void>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | void
+  >,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3174,7 +3179,9 @@ export const runtimeCreateSubTask = async (
 };
 
 export const getRuntimeCreateSubTaskMutationOptions = <
-  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | PaymentRequiredResponse
+  >,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3216,14 +3223,16 @@ export type RuntimeCreateSubTaskMutationResult = NonNullable<
 >;
 export type RuntimeCreateSubTaskMutationBody = BodyType<CreateSubTaskRequest>;
 export type RuntimeCreateSubTaskMutationError = ErrorType<
-  BadRequestResponse | UnauthorizedResponse | ErrorResponse
+  BadRequestResponse | UnauthorizedResponse | PaymentRequiredResponse
 >;
 
 /**
  * @summary Create a sub-task funded from the agent wallet (requires Agent API key)
  */
 export const useRuntimeCreateSubTask = <
-  TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ErrorResponse>,
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | PaymentRequiredResponse
+  >,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<

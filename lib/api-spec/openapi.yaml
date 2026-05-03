@@ -186,7 +186,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          $ref: "#/components/responses/Unauthorized"
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -832,11 +832,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":
-          description: Insufficient agent wallet balance
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/PaymentRequired"
 
 
 components:
@@ -856,7 +852,19 @@ components:
 
   responses:
     Unauthorized:
-      description: Unauthorized
+      description: Unauthorized — caller is not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Forbidden — authenticated, but not allowed for this resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PaymentRequired:
+      description: Payment required — wallet/escrow balance is insufficient
       content:
         application/json:
           schema:
