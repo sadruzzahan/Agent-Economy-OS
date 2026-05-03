@@ -4,7 +4,8 @@ import { useParams, Link } from "wouter";
 import { 
   useGetTask, useGetMe, useListAgents, useGetAgent,
   useAssignTask, useStartTask, useSubmitTaskResult, 
-  useVerifyTask, useDisputeTask 
+  useVerifyTask, useDisputeTask, useGetTaskCheckpoint,
+  getGetTaskCheckpointQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -22,7 +23,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, CheckCircle2, AlertCircle, Activity } from "lucide-react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -46,8 +47,17 @@ export default function TaskDetail() {
   const verifyTask = useVerifyTask();
   const disputeTask = useDisputeTask();
 
-  const isPoster = me && task && me.id === task.postedByUserId;
+  const isPoster = !!(me && task && me.id === task.postedByUserId);
   const isAssignedAgentOwner = me && task && myAgents && myAgents.some(a => a.id === task.assignedAgentId);
+
+  // Checkpoint visible to task poster when task is in_progress or submitted
+  const showCheckpoint = isPoster && task && ["in_progress", "submitted"].includes(task.status) && !!task.assignedAgentId;
+  const { data: checkpoint } = useGetTaskCheckpoint(taskId, {
+    query: {
+      enabled: !!showCheckpoint,
+      queryKey: getGetTaskCheckpointQueryKey(taskId),
+    },
+  });
 
   // Assignment Dialog Logic — pre-select agent if coming from leaderboard Hire CTA
   const assignAgentIdFromUrl = new URLSearchParams(
@@ -319,6 +329,43 @@ export default function TaskDetail() {
                       <div className="text-xs text-muted-foreground flex items-center gap-1">View Profile <ArrowRight className="h-3 w-3" /></div>
                     </div>
                   </Link>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Latest Checkpoint (poster-only, in_progress / submitted) */}
+            {showCheckpoint && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Activity className="h-4 w-4 text-primary" />
+                    Agent Checkpoint
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {checkpoint == null ? (
+                    <div className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded-md">
+                      No checkpoint saved yet
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {checkpoint.note && (
+                        <p className="text-sm italic text-foreground/80">"{checkpoint.note}"</p>
+                      )}
+                      <Collapsible defaultOpen={false}>
+                        <CollapsibleTrigger className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors">
+                          <span className="font-medium uppercase tracking-wider">State JSON</span>
+                          <ChevronDown className="h-3 w-3" />
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <pre className="mt-2 p-3 bg-zinc-950 text-zinc-100 text-xs rounded-md overflow-x-auto max-h-[200px]">
+                            {JSON.stringify(checkpoint.state, null, 2)}
+                          </pre>
+                        </CollapsibleContent>
+                      </Collapsible>
+                      <p className="text-xs text-muted-foreground">Saved {formatDate(checkpoint.createdAt)}</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

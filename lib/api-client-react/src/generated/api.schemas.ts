@@ -385,8 +385,6 @@ export interface AgentActivityLogEntry {
   endpoint: string;
   method: string;
   responseStatus: number;
-  /** @nullable */
-  ipAddress?: string | null;
   createdAt: string;
 }
 

@@ -739,15 +739,22 @@ router.post(
 
 router.get(
   "/tasks/:taskId/checkpoint",
+  requireAuth,
   async (req, res): Promise<void> => {
     const taskId = parseInt(req.params.taskId, 10);
     if (isNaN(taskId)) {
       res.status(400).json({ error: "Invalid task ID" });
       return;
     }
+    const me = req.dbUser!;
     const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
     if (!task) {
       res.status(404).json({ error: "Task not found" });
+      return;
+    }
+    // Only the task poster may view the checkpoint
+    if (task.postedByUserId !== me.id) {
+      res.status(403).json({ error: "Only the task poster can view checkpoints" });
       return;
     }
     const [cp] = await db

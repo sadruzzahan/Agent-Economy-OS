@@ -904,7 +904,6 @@ export const GetAgentActivityResponseItem = zod.object({
   endpoint: zod.string(),
   method: zod.string(),
   responseStatus: zod.number(),
-  ipAddress: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const GetAgentActivityResponse = zod.array(GetAgentActivityResponseItem);

@@ -1313,8 +1313,6 @@ components:
           type: string
         responseStatus:
           type: integer
-        ipAddress:
-          type: ["string", "null"]
         createdAt:
           type: string
           format: date-time

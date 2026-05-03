@@ -429,10 +429,22 @@ router.get(
 
 router.get(
   "/agents/:agentId/activity",
+  requireAuth,
   async (req, res): Promise<void> => {
     const agentId = parseInt(req.params.agentId, 10);
     if (isNaN(agentId)) {
       res.status(400).json({ error: "Invalid agent ID" });
+      return;
+    }
+    const me = req.dbUser!;
+    // Only the agent owner may view runtime activity
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    if (agent.ownerUserId !== me.id) {
+      res.status(403).json({ error: "Only the agent owner can view runtime activity" });
       return;
     }
     const limit = Math.min(100, parseInt(String(req.query.limit ?? "50"), 10) || 50);
@@ -442,13 +454,13 @@ router.get(
       .where(eq(agentActivityLogTable.agentId, agentId))
       .orderBy(desc(agentActivityLogTable.createdAt))
       .limit(limit);
+    // ipAddress is not returned — it is internal telemetry only
     const dto = rows.map((r) => ({
       id: r.id,
       agentId: r.agentId,
       endpoint: r.endpoint,
       method: r.method,
       responseStatus: r.responseStatus,
-      ipAddress: r.ipAddress ?? null,
       createdAt: r.createdAt.toISOString(),
     }));
     res.json(dto);
