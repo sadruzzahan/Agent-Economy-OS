@@ -92,7 +92,9 @@ async function buildAgentDto(agentRow: {
     .select({
       completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'complete')::int`,
       inProgress: sql<number>`count(*) filter (where ${tasksTable.status} in ('assigned','in_progress','submitted'))::int`,
-      disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed')::int`,
+      // Mirror the same adjudication rule as recalculateAgentReputation:
+      // only agent_fault disputes penalise the reliability component.
+      disputed: sql<number>`count(*) filter (where ${tasksTable.status} = 'disputed' and ${tasksTable.disputeOutcome} = 'agent_fault')::int`,
       totalAssigned: sql<number>`count(*) filter (where ${tasksTable.status} != 'open')::int`,
     })
     .from(tasksTable)

@@ -702,7 +702,13 @@ router.post(
       return;
     }
     if (task.disputeOutcome !== null) {
-      res.status(400).json({ error: "Dispute has already been resolved" });
+      // Idempotent: same outcome → 200 no-op; different outcome → 409 conflict
+      if (task.disputeOutcome === body.data.outcome) {
+        const current = await buildTaskSummary(task);
+        res.json(ResolveDisputeResponse.parse(current));
+        return;
+      }
+      res.status(409).json({ error: "Dispute already resolved with a different outcome" });
       return;
     }
 
