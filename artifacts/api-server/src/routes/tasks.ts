@@ -48,6 +48,15 @@ import {
   ResolveDisputeResponse,
 } from "@workspace/api-zod";
 import { n } from "../lib/serialize";
+import {
+  asCents,
+  centsFromDb,
+  centsToDollars,
+  clampNonNegative,
+  dollarsToCents,
+} from "../lib/money";
+import { stripeClient } from "../lib/stripe";
+import { env } from "../lib/env";
 
 const router: IRouter = Router();
 
@@ -301,7 +310,10 @@ router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> 
     capabilityIds,
   } = parsed.data;
 
-  if (n(me.postingBalance) < paymentAmount) {
+  // Wallet math is in cents internally. The API still accepts a
+  // decimal-dollar `paymentAmount`; convert once at the boundary.
+  const paymentCents = dollarsToCents(paymentAmount);
+  if (centsFromDb(me.postingBalanceCents) < paymentCents) {
     throw Errors.badRequest("Insufficient posting balance");
   }
 
@@ -323,9 +335,12 @@ router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> 
       throw new Error("Failed to create task");
     }
 
+    const paymentCentsStr = String(paymentCents);
     await tx
       .update(usersTable)
-      .set({ postingBalance: sql`${usersTable.postingBalance} - ${String(paymentAmount)}::numeric` })
+      .set({
+        postingBalanceCents: sql`${usersTable.postingBalanceCents} - ${paymentCentsStr}::bigint`,
+      })
       .where(eq(usersTable.id, me.id));
 
     const [userWallet] = await tx
@@ -333,17 +348,20 @@ router.post("/tasks", requireAuth, walletLimit, async (req, res): Promise<void> 
       .from(walletsTable)
       .where(eq(walletsTable.ownerUserId, me.id));
     if (userWallet) {
-      const newBalance = n(userWallet.balance) - paymentAmount;
-      const newEscrow = n(userWallet.escrowed) + paymentAmount;
+      const newBalanceCents = centsFromDb(userWallet.balanceCents) - paymentCents;
+      const newEscrowCents = centsFromDb(userWallet.escrowedCents) + paymentCents;
       await tx
         .update(walletsTable)
-        .set({ balance: String(newBalance), escrowed: String(newEscrow) })
+        .set({
+          balanceCents: newBalanceCents,
+          escrowedCents: newEscrowCents,
+        })
         .where(eq(walletsTable.id, userWallet.id));
       await tx.insert(walletTransactionsTable).values({
         walletId: userWallet.id,
         type: "escrow_lock",
-        amount: String(paymentAmount),
-        balanceAfter: String(newBalance),
+        amountCents: -paymentCents,
+        balanceAfterCents: newBalanceCents,
         relatedTaskId: createdTask.id,
         description: `Escrow for task: ${title}`,
       });
@@ -596,7 +614,13 @@ router.post(
     if (task.status !== "submitted") {
       throw Errors.badRequest("Task not in submitted state");
     }
-    const payment = n(task.paymentAmount);
+    const paymentCents = dollarsToCents(n(task.paymentAmount));
+    // Platform fee taken out of the agent's payout. 0 by default (no
+    // observable change in tests); operators flip via PLATFORM_FEE_BPS.
+    const feeCents = asCents(
+      Math.floor((paymentCents * env.PLATFORM_FEE_BPS) / 10_000),
+    );
+    const netToAgentCents = asCents(paymentCents - feeCents);
     const assignedAgentId = task.assignedAgentId;
 
     await db.transaction(async (tx) => {
@@ -614,16 +638,18 @@ router.post(
         .from(walletsTable)
         .where(eq(walletsTable.ownerUserId, me.id));
       if (userWallet) {
-        const newEscrow = Math.max(0, n(userWallet.escrowed) - payment);
+        const newEscrowCents = clampNonNegative(
+          centsFromDb(userWallet.escrowedCents) - paymentCents,
+        );
         await tx
           .update(walletsTable)
-          .set({ escrowed: String(newEscrow) })
+          .set({ escrowedCents: newEscrowCents })
           .where(eq(walletsTable.id, userWallet.id));
         await tx.insert(walletTransactionsTable).values({
           walletId: userWallet.id,
           type: "escrow_release",
-          amount: String(payment),
-          balanceAfter: String(n(userWallet.balance)),
+          amountCents: -paymentCents,
+          balanceAfterCents: centsFromDb(userWallet.balanceCents),
           relatedTaskId: task.id,
           description: `Released escrow for task: ${task.title}`,
         });
@@ -634,20 +660,23 @@ router.post(
         .from(walletsTable)
         .where(eq(walletsTable.agentId, assignedAgentId));
       if (agentWallet) {
-        const newBalance = n(agentWallet.balance) + payment;
-        const newEarned = n(agentWallet.totalEarned) + payment;
+        const newBalanceCents =
+          centsFromDb(agentWallet.balanceCents) + netToAgentCents;
+        const newEarnedCents =
+          centsFromDb(agentWallet.totalEarnedCents) + netToAgentCents;
         await tx
           .update(walletsTable)
           .set({
-            balance: String(newBalance),
-            totalEarned: String(newEarned),
+            balanceCents: newBalanceCents,
+            totalEarnedCents: newEarnedCents,
           })
           .where(eq(walletsTable.id, agentWallet.id));
         await tx.insert(walletTransactionsTable).values({
           walletId: agentWallet.id,
           type: "credit",
-          amount: String(payment),
-          balanceAfter: String(newBalance),
+          amountCents: netToAgentCents,
+          balanceAfterCents: newBalanceCents,
+          feeAmountCents: feeCents,
           relatedTaskId: task.id,
           description: `Payment received for task: ${task.title}`,
         });
@@ -685,7 +714,8 @@ router.post(
       after: {
         status: "complete",
         rating: body.data.rating ?? null,
-        paymentReleased: payment,
+        paymentReleased: centsToDollars(paymentCents),
+        feeCents,
       },
     });
     res.json(VerifyTaskResponse.parse(await buildTaskSummary(updated!)));
@@ -716,7 +746,7 @@ router.post(
     if (task.status !== "submitted") {
       throw Errors.badRequest("Task must be in submitted state to dispute");
     }
-    const payment = n(task.paymentAmount);
+    const paymentCents = dollarsToCents(n(task.paymentAmount));
 
     await db.transaction(async (tx) => {
       const [claimed] = await tx
@@ -733,24 +763,32 @@ router.post(
         .from(walletsTable)
         .where(eq(walletsTable.ownerUserId, me.id));
       if (userWallet) {
-        const newBalance = n(userWallet.balance) + payment;
-        const newEscrow = Math.max(0, n(userWallet.escrowed) - payment);
+        const newBalanceCents = centsFromDb(userWallet.balanceCents) + paymentCents;
+        const newEscrowCents = clampNonNegative(
+          centsFromDb(userWallet.escrowedCents) - paymentCents,
+        );
         await tx
           .update(walletsTable)
-          .set({ balance: String(newBalance), escrowed: String(newEscrow) })
+          .set({
+            balanceCents: newBalanceCents,
+            escrowedCents: newEscrowCents,
+          })
           .where(eq(walletsTable.id, userWallet.id));
         await tx.insert(walletTransactionsTable).values({
           walletId: userWallet.id,
           type: "escrow_return",
-          amount: String(payment),
-          balanceAfter: String(newBalance),
+          amountCents: paymentCents,
+          balanceAfterCents: newBalanceCents,
           relatedTaskId: task.id,
           description: `Escrow returned after dispute: ${task.title}`,
         });
       }
+      const paymentCentsStr = String(paymentCents);
       await tx
         .update(usersTable)
-        .set({ postingBalance: sql`${usersTable.postingBalance} + ${String(payment)}::numeric` })
+        .set({
+          postingBalanceCents: sql`${usersTable.postingBalanceCents} + ${paymentCentsStr}::bigint`,
+        })
         .where(eq(usersTable.id, me.id));
 
       await tx.insert(taskStatusLogTable).values({
@@ -814,6 +852,13 @@ router.post(
       throw Errors.conflict("Dispute already resolved with a different outcome");
     }
 
+    // If the poster wins (`poster_fault` was the AGENT'S fault — bad
+    // naming carried over; we refund the poster), we issue a Stripe
+    // refund against the original Checkout payment when one is on
+    // file. Wallet credit already happened at /dispute time, so the
+    // refund is purely the rail-level money-movement.
+    let refundIssuedCents = 0;
+    let refundReference: string | null = null;
     await db.transaction(async (tx) => {
       await tx
         .update(tasksTable)
@@ -825,10 +870,42 @@ router.post(
         actorUserId: me.id,
         note: `Dispute resolved: ${body.data.outcome}`,
       });
+
+      if (body.data.outcome === "poster_fault") {
+        // NOTE on rail-level refunds: we deliberately do NOT issue a
+        // Stripe refund from this code path. The user's posting
+        // balance is fungible across many top-ups, so picking "the
+        // most recent succeeded top-up" to refund against is wrong —
+        // it can refund a charge that has nothing to do with this
+        // task, over- or under-refund, and silently fail when that
+        // charge has already been partially refunded for another
+        // dispute. Linking task → original charge requires storing a
+        // payment-intent breadcrumb on every escrow lock and is
+        // tracked as follow-up work. For now the wallet credit
+        // performed at /dispute time IS the user-visible refund;
+        // they can withdraw it via /wallets/payout if they want
+        // bank money back.
+        refundIssuedCents = 0;
+        refundReference = null;
+      }
+
       if (task.assignedAgentId != null) {
         await recalculateAgentReputation(tx, task.assignedAgentId);
       }
     });
+
+    if (refundIssuedCents > 0) {
+      await audit(req, {
+        action: "wallet.refund_issue",
+        targetType: "task",
+        targetId: task.id,
+        after: {
+          refundReference,
+          refundIssuedCents,
+          stub: stripeClient.isStub,
+        },
+      });
+    }
 
     const [updated] = await db
       .select()

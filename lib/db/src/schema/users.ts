@@ -4,7 +4,7 @@ import {
   text,
   serial,
   timestamp,
-  numeric,
+  bigint,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -24,6 +24,22 @@ export const userRoleEnum = pgEnum("user_role", [
 
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
+/**
+ * Stripe Connect Express onboarding lifecycle for owner-level payouts.
+ *   none       — no Connect account yet
+ *   pending    — account created, onboarding link issued, KYC not complete
+ *   verified   — `charges_enabled` and `payouts_enabled` both true
+ *   restricted — Stripe disabled the account; payouts paused
+ */
+export const connectStatusEnum = pgEnum("connect_status", [
+  "none",
+  "pending",
+  "verified",
+  "restricted",
+]);
+
+export type ConnectStatus = (typeof connectStatusEnum.enumValues)[number];
+
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   clerkUserId: text("clerk_user_id").notNull().unique(),
@@ -37,9 +53,21 @@ export const usersTable = pgTable("users", {
    * in ADMIN_BOOTSTRAP_EMAILS (idempotent on first sync from Clerk).
    */
   role: userRoleEnum("role").notNull().default("user"),
-  postingBalance: numeric("posting_balance", { precision: 14, scale: 2 })
+  /**
+   * Posting balance in integer USD cents (matches wallets.balance_cents).
+   * Default 10000c ($100) seed grant for development; production seed is
+   * controlled via the wallet credit flow.
+   */
+  postingBalanceCents: bigint("posting_balance_cents", { mode: "number" })
     .notNull()
-    .default("100.00"),
+    .default(10000),
+  /** Stripe Customer id for inbound Checkout sessions. Null until first top-up. */
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  /** Stripe Connect Express account id used for owner payouts. */
+  stripeConnectAccountId: text("stripe_connect_account_id").unique(),
+  stripeConnectStatus: connectStatusEnum("stripe_connect_status")
+    .notNull()
+    .default("none"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

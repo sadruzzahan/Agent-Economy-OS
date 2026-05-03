@@ -20,6 +20,7 @@ import {
   GetPlatformStatsResponse,
 } from "@workspace/api-zod";
 import { n } from "../lib/serialize";
+import { centsFromDb, centsToDollars } from "../lib/money";
 import { platformStatsCache } from "../lib/cache";
 
 const router: IRouter = Router();
@@ -44,6 +45,7 @@ router.get(
         inProgress: sql<number>`count(*) filter (where status in ('assigned','in_progress','submitted'))::int`,
         completed: sql<number>`count(*) filter (where status = 'complete')::int`,
         spent: sql<number>`coalesce(sum(payment_amount) filter (where status = 'complete'), 0)::float`,
+
       })
       .from(tasksTable)
       .where(eq(tasksTable.postedByUserId, me.id));
@@ -51,13 +53,14 @@ router.get(
     let totalEarned = 0;
     let agentInProgress = 0;
     if (agentIds.length > 0) {
+      // total_earned_cents is integer cents; convert at the boundary.
       const [earnedRow] = await db
         .select({
-          total: sql<number>`coalesce(sum(total_earned), 0)::float`,
+          totalCents: sql<number>`coalesce(sum(total_earned_cents), 0)::bigint`,
         })
         .from(walletsTable)
         .where(inArray(walletsTable.agentId, agentIds));
-      totalEarned = earnedRow?.total ?? 0;
+      totalEarned = centsToDollars(centsFromDb(earnedRow?.totalCents ?? 0));
       const [aggInProg] = await db
         .select({
           c: sql<number>`count(*)::int`,
@@ -91,8 +94,10 @@ router.get(
         tasksCompleted: postedCounts?.completed ?? 0,
         totalEarned,
         totalSpent: postedCounts?.spent ?? 0,
-        postingBalance: n(me.postingBalance),
-        totalEscrowed: userWallet ? n(userWallet.escrowed) : 0,
+        postingBalance: centsToDollars(centsFromDb(me.postingBalanceCents)),
+        totalEscrowed: userWallet
+          ? centsToDollars(centsFromDb(userWallet.escrowedCents))
+          : 0,
       }),
     );
   },

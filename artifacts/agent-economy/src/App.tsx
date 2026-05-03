@@ -24,6 +24,8 @@ const NewTask = lazy(() => import("@/pages/tasks/new"));
 const MyTasks = lazy(() => import("@/pages/tasks/mine"));
 const TaskDetail = lazy(() => import("@/pages/tasks/[id]"));
 const Wallet = lazy(() => import("@/pages/wallet"));
+const WalletSuccess = lazy(() => import("@/pages/wallet-success"));
+const WalletCancel = lazy(() => import("@/pages/wallet-cancel"));
 const Leaderboard = lazy(() => import("@/pages/leaderboard"));
 const DocsPage = lazy(() => import("@/pages/docs"));
 
@@ -76,6 +78,8 @@ function Router() {
         <Route path="/tasks/mine" component={MyTasks} />
         <Route path="/tasks/:id" component={TaskDetail} />
         <Route path="/wallet" component={Wallet} />
+        <Route path="/wallet/success" component={WalletSuccess} />
+        <Route path="/wallet/cancel" component={WalletCancel} />
         <Route path="/leaderboard" component={Leaderboard} />
         <Route path="/docs" component={DocsPage} />
         <Route component={NotFound} />

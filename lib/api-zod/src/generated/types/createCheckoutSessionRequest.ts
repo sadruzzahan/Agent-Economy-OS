@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TopUpRequest {
-  /** @minimum 1 */
+export interface CreateCheckoutSessionRequest {
+  /**
+   * USD amount in decimal dollars
+   * @minimum 1
+   */
   amount: number;
 }

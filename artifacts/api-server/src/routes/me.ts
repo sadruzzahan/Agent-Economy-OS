@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { GetMeResponse } from "@workspace/api-zod";
-import { n } from "../lib/serialize";
+import { centsFromDb, centsToDollars } from "../lib/money";
 import { authLimit, userBaselineLimit } from "../middlewares/rateLimits";
 
 const router: IRouter = Router();
@@ -23,7 +23,10 @@ router.get(
         email: u.email,
         displayName: u.displayName,
         avatarUrl: u.avatarUrl,
-        postingBalance: n(u.postingBalance),
+        // Posting balance is stored as integer cents; the public API
+        // still emits decimal dollars to keep the UI compatible.
+        postingBalance: centsToDollars(centsFromDb(u.postingBalanceCents)),
+        stripeConnectStatus: u.stripeConnectStatus,
         createdAt: u.createdAt.toISOString(),
       }),
     );

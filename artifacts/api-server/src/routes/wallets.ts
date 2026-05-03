@@ -16,13 +16,29 @@ import {
   ListMyWalletsResponse,
   ListWalletTransactionsQueryParams,
   ListWalletTransactionsResponse,
-  TopUpBalanceBody,
-  TopUpBalanceResponse,
+  CreateCheckoutSessionBody,
+  CreateCheckoutSessionResponse,
+  RequestPayoutBody,
+  RequestPayoutResponse,
 } from "@workspace/api-zod";
-import { n } from "../lib/serialize";
+import {
+  centsFromDb,
+  centsToDollars,
+  dollarsToCents,
+  formatCents,
+} from "../lib/money";
+import { stripeClient } from "../lib/stripe";
+import { getAppBaseUrl } from "../lib/env";
+import { processStripeEvent } from "./stripe";
+import crypto from "node:crypto";
 
 const router: IRouter = Router();
 
+/**
+ * Build the wallet summary for a user. Internally everything is integer
+ * cents; the API surface still emits decimal dollars (number) for
+ * back-compat with the existing UI and OpenAPI consumers.
+ */
 async function buildWalletSummary(userId: number) {
   const [userWalletRow] = await db
     .select()
@@ -52,9 +68,11 @@ async function buildWalletSummary(userId: number) {
         ownerUserId: userId,
         agentId: null,
         agentName: null,
-        balance: n(userWalletRow.balance),
-        escrowed: n(userWalletRow.escrowed),
-        totalEarned: n(userWalletRow.totalEarned),
+        balance: centsToDollars(centsFromDb(userWalletRow.balanceCents)),
+        escrowed: centsToDollars(centsFromDb(userWalletRow.escrowedCents)),
+        totalEarned: centsToDollars(
+          centsFromDb(userWalletRow.totalEarnedCents),
+        ),
       }
     : {
         id: 0,
@@ -73,9 +91,9 @@ async function buildWalletSummary(userId: number) {
     ownerUserId: null,
     agentId: w.agentId,
     agentName: w.agentId ? agentNames.get(w.agentId) ?? null : null,
-    balance: n(w.balance),
-    escrowed: n(w.escrowed),
-    totalEarned: n(w.totalEarned),
+    balance: centsToDollars(centsFromDb(w.balanceCents)),
+    escrowed: centsToDollars(centsFromDb(w.escrowedCents)),
+    totalEarned: centsToDollars(centsFromDb(w.totalEarnedCents)),
   }));
 
   const totalBalance =
@@ -102,60 +120,260 @@ router.get(
   },
 );
 
+/**
+ * POST /wallets/checkout — Replaces the old "topup" endpoint.
+ *
+ * Returns a Stripe Checkout URL the client must redirect to. The
+ * actual wallet credit happens asynchronously via the
+ * `checkout.session.completed` webhook (see `routes/stripe.ts`),
+ * NEVER here — that's the only way to make the credit idempotent
+ * against retries and concurrent submissions.
+ *
+ * In stub mode the returned URL points back at the success page so
+ * end-to-end tests can complete without a real Stripe round-trip.
+ */
 router.post(
-  "/wallets/topup",
+  "/wallets/checkout",
   requireAuth,
   walletLimit,
   async (req, res): Promise<void> => {
-    const parsed = TopUpBalanceBody.safeParse(req.body);
+    const parsed = CreateCheckoutSessionBody.safeParse(req.body);
     if (!parsed.success) throw Errors.badRequest(parsed.error.message);
     const me = req.dbUser!;
-    let toppedUpWalletId: number | null = null;
-    let toppedUpBalanceAfter: number | null = null;
-    await db.transaction(async (tx) => {
-      await tx
-        .update(usersTable)
-        .set({ postingBalance: sql`${usersTable.postingBalance} + ${String(parsed.data.amount)}::numeric` })
-        .where(eq(usersTable.id, me.id));
 
-      const [userWallet] = await tx
-        .select()
-        .from(walletsTable)
-        .where(eq(walletsTable.ownerUserId, me.id));
-      if (userWallet) {
-        const newWalletBalance = n(userWallet.balance) + parsed.data.amount;
-        await tx
-          .update(walletsTable)
-          .set({ balance: String(newWalletBalance) })
-          .where(eq(walletsTable.id, userWallet.id));
-        await tx.insert(walletTransactionsTable).values({
-          walletId: userWallet.id,
-          type: "top_up",
-          amount: String(parsed.data.amount),
-          balanceAfter: String(newWalletBalance),
-          description: "Wallet top-up",
-        });
-        toppedUpWalletId = userWallet.id;
-        toppedUpBalanceAfter = newWalletBalance;
-      }
+    const amountCents = dollarsToCents(parsed.data.amount);
+    if (amountCents < 100) {
+      throw Errors.badRequest("Minimum deposit is $1.00");
+    }
+
+    // Lazily provision a Stripe Customer the first time a user pays in.
+    const customer = await stripeClient.createOrRetrieveCustomer({
+      existingId: me.stripeCustomerId,
+      email: me.email,
+      userId: me.id,
     });
+    if (!me.stripeCustomerId) {
+      await db
+        .update(usersTable)
+        .set({ stripeCustomerId: customer.id })
+        .where(eq(usersTable.id, me.id));
+    }
 
-    // Audit the wallet by its primary key (not the user id) so the audit
-    // log can be joined cleanly back to wallets and so a user with
-    // multiple wallets in the future is unambiguous.
-    await audit(req, {
-      action: "wallet.topup",
-      targetType: "wallet",
-      targetId: toppedUpWalletId,
-      after: {
-        amount: parsed.data.amount,
-        balanceAfter: toppedUpBalanceAfter,
-        userId: me.id,
+    const baseUrl = getAppBaseUrl();
+    // The success/cancel URLs include the artifact base path so the
+    // proxied preview pane resolves them correctly.
+    const session = await stripeClient.createCheckoutSession({
+      userId: me.id,
+      customerId: customer.id,
+      customerEmail: me.email,
+      amountCents,
+      successUrl: `${baseUrl}/wallet/success`,
+      cancelUrl: `${baseUrl}/wallet/cancel`,
+      metadata: {
+        userId: String(me.id),
+        purpose: "wallet_topup",
       },
     });
 
-    const summary = await buildWalletSummary(me.id);
-    res.json(TopUpBalanceResponse.parse(summary));
+    // Pre-record the pending top-up so the wallet page can show a
+    // "processing" entry between redirect and webhook arrival. The
+    // webhook will look this row up by stripe_reference and flip it to
+    // succeeded.
+    const [userWallet] = await db
+      .select()
+      .from(walletsTable)
+      .where(eq(walletsTable.ownerUserId, me.id));
+    if (userWallet) {
+      await db.insert(walletTransactionsTable).values({
+        walletId: userWallet.id,
+        type: "top_up",
+        amountCents,
+        balanceAfterCents: centsFromDb(userWallet.balanceCents),
+        externalStatus: "pending",
+        stripeReference: session.id,
+        description: `Stripe Checkout pending: ${formatCents(amountCents)}`,
+      });
+    }
+
+    await audit(req, {
+      action: "wallet.checkout_create",
+      targetType: "wallet",
+      targetId: userWallet?.id ?? null,
+      after: {
+        sessionId: session.id,
+        amountCents,
+        stub: stripeClient.isStub,
+      },
+    });
+
+    // Stub-mode auto-settle: we own both sides of the stub Stripe so
+    // we synthesize and dispatch the `checkout.session.completed`
+    // event right now. This makes top-ups end-to-end functional in
+    // dev/test without hand-rolling a webhook curl. In live mode
+    // Stripe sends the real event after the user's card is charged.
+    if (stripeClient.isStub) {
+      try {
+        await processStripeEvent({
+          id: `evt_stub_${crypto.randomBytes(8).toString("hex")}`,
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              id: session.id,
+              amount_total: amountCents,
+              metadata: {
+                userId: String(me.id),
+                purpose: "wallet_topup",
+              },
+            },
+          },
+        });
+      } catch (err) {
+        // Don't fail the redirect on stub-settle errors — the
+        // pending row is still on the books and a manual webhook can
+        // retry. Just log loudly.
+        // eslint-disable-next-line no-console
+        console.error("[stub-settle] failed to auto-credit checkout", err);
+      }
+    }
+
+    res.json(
+      CreateCheckoutSessionResponse.parse({
+        sessionId: session.id,
+        url: session.url,
+        stub: stripeClient.isStub,
+      }),
+    );
+  },
+);
+
+/**
+ * POST /wallets/payout — owner cash-out from an agent wallet to their
+ * connected Stripe account. We never let payouts dip into pending
+ * funds — those are still moving through Stripe's settlement window
+ * and could get clawed back.
+ */
+router.post(
+  "/wallets/payout",
+  requireAuth,
+  walletLimit,
+  async (req, res): Promise<void> => {
+    const parsed = RequestPayoutBody.safeParse(req.body);
+    if (!parsed.success) throw Errors.badRequest(parsed.error.message);
+    const me = req.dbUser!;
+
+    if (
+      !me.stripeConnectAccountId ||
+      me.stripeConnectStatus !== "verified"
+    ) {
+      throw Errors.badRequest(
+        "Stripe Connect account is not verified — complete onboarding first",
+      );
+    }
+
+    const amountCents = dollarsToCents(parsed.data.amount);
+    if (amountCents < 100) {
+      throw Errors.badRequest("Minimum payout is $1.00");
+    }
+
+    // The wallet must belong to one of the user's agents AND have
+    // enough liquid (non-pending) balance.
+    const [wallet] = await db
+      .select({
+        wallet: walletsTable,
+        agent: agentsTable,
+      })
+      .from(walletsTable)
+      .innerJoin(agentsTable, eq(walletsTable.agentId, agentsTable.id))
+      .where(eq(walletsTable.id, parsed.data.walletId));
+    if (!wallet || wallet.agent.ownerUserId !== me.id) {
+      throw Errors.forbidden("Wallet not owned by user");
+    }
+    const liquidCents =
+      centsFromDb(wallet.wallet.balanceCents) -
+      centsFromDb(wallet.wallet.pendingCents);
+    if (liquidCents < amountCents) {
+      throw Errors.badRequest(
+        `Insufficient liquid balance (have ${formatCents(liquidCents)}, need ${formatCents(amountCents)})`,
+      );
+    }
+
+    // ── DEBIT FIRST ────────────────────────────────────────────────
+    // The hard rule: never call Stripe before the ledger has agreed
+    // to part with the money. Otherwise a debit failure (race or DB
+    // outage) after a successful Stripe call leaves us short. The
+    // guarded UPDATE serializes concurrent payout requests on the
+    // same wallet via Postgres row locks.
+    const amountCentsStr = String(amountCents);
+    const [debited] = await db
+      .update(walletsTable)
+      .set({
+        balanceCents: sql`${walletsTable.balanceCents} - ${amountCentsStr}::bigint`,
+      })
+      .where(
+        sql`${walletsTable.id} = ${wallet.wallet.id} AND (${walletsTable.balanceCents} - ${walletsTable.pendingCents}) >= ${amountCentsStr}::bigint`,
+      )
+      .returning({
+        id: walletsTable.id,
+        balanceCents: walletsTable.balanceCents,
+      });
+    if (!debited) {
+      throw Errors.conflict("Concurrent payout drained the wallet");
+    }
+
+    // ── THEN call Stripe with a compensation on failure ───────────
+    let payout: Awaited<ReturnType<typeof stripeClient.createPayout>>;
+    try {
+      payout = await stripeClient.createPayout({
+        destinationAccountId: me.stripeConnectAccountId,
+        amountCents,
+        metadata: {
+          userId: String(me.id),
+          walletId: String(wallet.wallet.id),
+        },
+      });
+    } catch (err) {
+      // Compensate: restore the balance we just took. We do NOT
+      // record a `fee_adjust` row here because the only ledger row
+      // that ever existed (the debit) was never actually written —
+      // we're cleanly reversing the bare UPDATE.
+      await db
+        .update(walletsTable)
+        .set({
+          balanceCents: sql`${walletsTable.balanceCents} + ${amountCentsStr}::bigint`,
+        })
+        .where(eq(walletsTable.id, wallet.wallet.id));
+      throw err;
+    }
+
+    await db.insert(walletTransactionsTable).values({
+      walletId: wallet.wallet.id,
+      type: "payout",
+      amountCents: -amountCents,
+      balanceAfterCents: centsFromDb(debited.balanceCents),
+      externalStatus: payout.status === "paid" ? "succeeded" : "pending",
+      stripeReference: payout.id,
+      description: `Payout to bank: ${formatCents(amountCents)}`,
+    });
+
+    await audit(req, {
+      action: "wallet.payout_request",
+      targetType: "wallet",
+      targetId: wallet.wallet.id,
+      after: {
+        payoutId: payout.id,
+        amountCents,
+        stub: stripeClient.isStub,
+      },
+    });
+
+    res.json(
+      RequestPayoutResponse.parse({
+        payoutId: payout.id,
+        status: payout.status,
+        amount: centsToDollars(amountCents),
+        stub: stripeClient.isStub,
+      }),
+    );
   },
 );
 
@@ -213,8 +431,9 @@ router.get(
         id: walletTransactionsTable.id,
         walletId: walletTransactionsTable.walletId,
         type: walletTransactionsTable.type,
-        amount: walletTransactionsTable.amount,
-        balanceAfter: walletTransactionsTable.balanceAfter,
+        amountCents: walletTransactionsTable.amountCents,
+        balanceAfterCents: walletTransactionsTable.balanceAfterCents,
+        externalStatus: walletTransactionsTable.externalStatus,
         relatedTaskId: walletTransactionsTable.relatedTaskId,
         description: walletTransactionsTable.description,
         createdAt: walletTransactionsTable.createdAt,
@@ -238,8 +457,9 @@ router.get(
           ? agentNames.get(wInfo.agentId) ?? null
           : null,
         type: t.type,
-        amount: n(t.amount),
-        balanceAfter: n(t.balanceAfter),
+        amount: centsToDollars(centsFromDb(t.amountCents)),
+        balanceAfter: centsToDollars(centsFromDb(t.balanceAfterCents)),
+        externalStatus: t.externalStatus,
         relatedTaskId: t.relatedTaskId,
         relatedTaskTitle: t.relatedTaskTitle,
         description: t.description,

@@ -74,6 +74,15 @@ app.use(
   }),
 );
 
+// Stripe webhook needs the raw body (Buffer) for signature verification.
+// MUST be mounted BEFORE the global json parser, otherwise the body has
+// already been consumed and signing fails. Path is exact so other routes
+// continue to receive parsed JSON.
+app.use(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+);
+
 // Body size limits. 100kb is plenty for normal API payloads; routes that
 // need more (e.g. task result blobs) can override locally.
 app.use(express.json({ limit: "100kb" }));

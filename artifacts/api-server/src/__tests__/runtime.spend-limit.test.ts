@@ -10,31 +10,39 @@ import {
 
 const TEST_PREFIX = "__spend_limit_test__";
 
-// Mirrors the exact guarded UPDATE in runtime.ts POST /runtime/tasks
-async function atomicDebitWallet(
+/**
+ * Mirrors the exact guarded UPDATE in `routes/runtime.ts` POST
+ * /runtime/tasks. Internally everything is integer cents now — the
+ * guard predicate `balance_cents >= :amount_cents` is what gives us
+ * the no-double-spend invariant under concurrent requests.
+ */
+async function atomicDebitWalletCents(
   walletId: number,
-  amount: number,
-): Promise<{ success: boolean; newBalance: string | null }> {
-  const amountStr = amount.toFixed(2);
+  amountCents: number,
+): Promise<{ success: boolean; newBalanceCents: number | null }> {
+  const amountStr = String(amountCents);
   const [row] = await db
     .update(walletsTable)
     .set({
-      balance: sql`${walletsTable.balance} - ${amountStr}::numeric`,
-      escrowed: sql`${walletsTable.escrowed} + ${amountStr}::numeric`,
+      balanceCents: sql`${walletsTable.balanceCents} - ${amountStr}::bigint`,
+      escrowedCents: sql`${walletsTable.escrowedCents} + ${amountStr}::bigint`,
     })
     .where(
       and(
         eq(walletsTable.id, walletId),
-        sql`${walletsTable.balance} >= ${amountStr}::numeric`,
+        sql`${walletsTable.balanceCents} >= ${amountStr}::bigint`,
       ),
     )
-    .returning({ id: walletsTable.id, balance: walletsTable.balance });
+    .returning({
+      id: walletsTable.id,
+      balanceCents: walletsTable.balanceCents,
+    });
   return row
-    ? { success: true, newBalance: String(row.balance) }
-    : { success: false, newBalance: null };
+    ? { success: true, newBalanceCents: Number(row.balanceCents) }
+    : { success: false, newBalanceCents: null };
 }
 
-describe("Runtime wallet spend-limit guard (atomic debit)", () => {
+describe("Runtime wallet spend-limit guard (atomic debit, integer cents)", () => {
   let agentId: number;
   let walletId: number;
 
@@ -62,9 +70,9 @@ describe("Runtime wallet spend-limit guard (atomic debit)", () => {
       .values({
         kind: "agent",
         agentId,
-        balance: "50.00",
-        escrowed: "0.00",
-        totalEarned: "0.00",
+        balanceCents: 5000, // $50.00
+        escrowedCents: 0,
+        totalEarnedCents: 0,
       })
       .returning();
     walletId = wallet!.id;
@@ -77,48 +85,48 @@ describe("Runtime wallet spend-limit guard (atomic debit)", () => {
   });
 
   it("allows a single debit within available balance", async () => {
-    const result = await atomicDebitWallet(walletId, 20.00);
+    const result = await atomicDebitWalletCents(walletId, 2000); // $20.00
     expect(result.success).toBe(true);
 
     const [w] = await db.select().from(walletsTable).where(eq(walletsTable.id, walletId));
-    expect(Number(w!.balance)).toBeCloseTo(30.00, 2);
-    expect(Number(w!.escrowed)).toBeCloseTo(20.00, 2);
+    expect(Number(w!.balanceCents)).toBe(3000);
+    expect(Number(w!.escrowedCents)).toBe(2000);
   });
 
   it("rejects a debit that exceeds the available balance", async () => {
-    const result = await atomicDebitWallet(walletId, 75.00);
+    const result = await atomicDebitWalletCents(walletId, 7500); // $75.00
     expect(result.success).toBe(false);
 
     const [w] = await db.select().from(walletsTable).where(eq(walletsTable.id, walletId));
-    expect(Number(w!.balance)).toBeCloseTo(50.00, 2);
-    expect(Number(w!.escrowed)).toBeCloseTo(0.00, 2);
+    expect(Number(w!.balanceCents)).toBe(5000);
+    expect(Number(w!.escrowedCents)).toBe(0);
   });
 
-  it("prevents double-spend: concurrent $40 debits against $50 balance — exactly one wins", async () => {
+  it("prevents double-spend: concurrent $40 debits against $50 — exactly one wins", async () => {
     const [r1, r2] = await Promise.all([
-      atomicDebitWallet(walletId, 40.00),
-      atomicDebitWallet(walletId, 40.00),
+      atomicDebitWalletCents(walletId, 4000),
+      atomicDebitWalletCents(walletId, 4000),
     ]);
 
     const successes = [r1, r2].filter((r) => r.success).length;
     expect(successes).toBe(1);
 
     const [w] = await db.select().from(walletsTable).where(eq(walletsTable.id, walletId));
-    expect(Number(w!.balance)).toBeCloseTo(10.00, 2);
-    expect(Number(w!.escrowed)).toBeCloseTo(40.00, 2);
+    expect(Number(w!.balanceCents)).toBe(1000);
+    expect(Number(w!.escrowedCents)).toBe(4000);
   });
 
   it("allows sequential debits until balance is exhausted", async () => {
-    const r1 = await atomicDebitWallet(walletId, 20.00);
-    const r2 = await atomicDebitWallet(walletId, 20.00);
-    const r3 = await atomicDebitWallet(walletId, 20.00); // would push to -10 — must reject
+    const r1 = await atomicDebitWalletCents(walletId, 2000);
+    const r2 = await atomicDebitWalletCents(walletId, 2000);
+    const r3 = await atomicDebitWalletCents(walletId, 2000); // would push to -1000c — must reject
 
     expect(r1.success).toBe(true);
     expect(r2.success).toBe(true);
     expect(r3.success).toBe(false);
 
     const [w] = await db.select().from(walletsTable).where(eq(walletsTable.id, walletId));
-    expect(Number(w!.balance)).toBeCloseTo(10.00, 2);
-    expect(Number(w!.escrowed)).toBeCloseTo(40.00, 2);
+    expect(Number(w!.balanceCents)).toBe(1000);
+    expect(Number(w!.escrowedCents)).toBe(4000);
   });
 });

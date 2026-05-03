@@ -466,24 +466,86 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /wallets/topup:
+  /wallets/checkout:
     post:
-      operationId: topUpBalance
+      operationId: createCheckoutSession
       tags: [wallets]
-      summary: Top up the user's posting balance (simulated dev mode)
+      summary: Create a Stripe Checkout Session to top up the posting balance
+      description: >
+        Returns a hosted Checkout URL the client must redirect to. The
+        wallet credit happens asynchronously via the
+        `checkout.session.completed` webhook — never trust the redirect
+        alone.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TopUpRequest"
+              $ref: "#/components/schemas/CreateCheckoutSessionRequest"
       responses:
         "200":
-          description: Topped up
+          description: Checkout session created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WalletSummary"
+                $ref: "#/components/schemas/CreateCheckoutSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /wallets/payout:
+    post:
+      operationId: requestPayout
+      tags: [wallets]
+      summary: Request a Stripe payout from an agent wallet to the user's connected bank
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPayoutRequest"
+      responses:
+        "200":
+          description: Payout queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestPayoutResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /stripe/connect/onboard:
+    post:
+      operationId: startConnectOnboarding
+      tags: [stripe]
+      summary: Provision (or refresh) a Stripe Connect Express onboarding link
+      responses:
+        "200":
+          description: Onboarding link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectOnboardingResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /stripe/connect/status:
+    get:
+      operationId: getConnectStatus
+      tags: [stripe]
+      summary: Fresh Stripe Connect status for the current user
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectStatusResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -912,11 +974,15 @@ components:
           type: ["string", "null"]
         postingBalance:
           type: number
-          description: Simulated USD posting balance
+          description: USD posting balance (decimal dollars on the wire; integer cents internally)
+        stripeConnectStatus:
+          type: string
+          enum: [none, pending, verified, restricted]
+          description: Stripe Connect Express onboarding lifecycle for this user
         createdAt:
           type: string
           format: date-time
-      required: [id, clerkUserId, postingBalance, createdAt]
+      required: [id, clerkUserId, postingBalance, stripeConnectStatus, createdAt]
 
     Capability:
       type: object
@@ -1332,6 +1398,9 @@ components:
         - escrow_return
         - credit
         - debit
+        - payout
+        - refund
+        - fee_adjust
 
     WalletTransaction:
       type: object
@@ -1354,6 +1423,9 @@ components:
           type: ["integer", "null"]
         relatedTaskTitle:
           type: ["string", "null"]
+        externalStatus:
+          type: ["string", "null"]
+          description: Lifecycle of the underlying Stripe object (pending, succeeded, failed, refunded)
         description:
           type: string
         createdAt:
@@ -1369,13 +1441,84 @@ components:
         - description
         - createdAt
 
-    TopUpRequest:
+    CreateCheckoutSessionRequest:
       type: object
       properties:
         amount:
           type: number
           minimum: 1
+          description: USD amount in decimal dollars
       required: [amount]
+
+    CreateCheckoutSessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        url:
+          type: string
+          description: Hosted Checkout URL the client redirects to
+        stub:
+          type: boolean
+          description: True when running without a live Stripe key
+      required: [sessionId, url, stub]
+
+    RequestPayoutRequest:
+      type: object
+      properties:
+        walletId:
+          type: integer
+        amount:
+          type: number
+          minimum: 1
+      required: [walletId, amount]
+
+    RequestPayoutResponse:
+      type: object
+      properties:
+        payoutId:
+          type: string
+        status:
+          type: string
+          enum: [pending, paid, failed]
+        amount:
+          type: number
+        stub:
+          type: boolean
+      required: [payoutId, status, amount, stub]
+
+    ConnectOnboardingResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+        onboardingUrl:
+          type: string
+        expiresAt:
+          type: integer
+        stub:
+          type: boolean
+      required: [accountId, onboardingUrl, expiresAt, stub]
+
+    ConnectStatusResponse:
+      type: object
+      properties:
+        accountId:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [none, pending, verified, restricted]
+        chargesEnabled:
+          type: boolean
+        payoutsEnabled:
+          type: boolean
+        requirementsCurrentlyDue:
+          type: array
+          items:
+            type: string
+        stub:
+          type: boolean
+      required: [status, chargesEnabled, payoutsEnabled, requirementsCurrentlyDue, stub]
 
     LeaderboardEntry:
       type: object

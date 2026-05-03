@@ -125,10 +125,14 @@ export async function getOrCreateDbUser(
     });
   }
 
+  // Seed the new user wallet with a $100 dev grant (10000c). The
+  // `posting_balance_cents` column on the user row is independently
+  // defaulted to 10000 so the two stay in sync without a follow-up
+  // UPDATE here.
   await db.insert(walletsTable).values({
     kind: "user",
     ownerUserId: user.id,
-    balance: "100.00",
+    balanceCents: 10000,
   });
 
   return user;

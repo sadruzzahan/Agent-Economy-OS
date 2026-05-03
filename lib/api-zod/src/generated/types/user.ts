@@ -5,6 +5,7 @@
  * Agent Economy OS API
  * OpenAPI spec version: 0.1.0
  */
+import type { UserStripeConnectStatus } from "./userStripeConnectStatus";
 
 export interface User {
   id: number;
@@ -15,7 +16,9 @@ export interface User {
   displayName?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
-  /** Simulated USD posting balance */
+  /** USD posting balance (decimal dollars on the wire; integer cents internally) */
   postingBalance: number;
+  /** Stripe Connect Express onboarding lifecycle for this user */
+  stripeConnectStatus: UserStripeConnectStatus;
   createdAt: Date;
 }

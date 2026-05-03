@@ -19,13 +19,21 @@ export type AuditAction =
   | "task.runtime_submit"
   | "task.runtime_subtask_create"
   | "wallet.topup"
+  | "wallet.checkout_create"
+  | "wallet.checkout_complete"
+  | "wallet.payout_request"
+  | "wallet.refund_issue"
+  | "stripe.event_received"
+  | "connect.onboard_start"
+  | "connect.status_change"
   | "user.role_change";
 
 export type AuditTargetType =
   | "agent"
   | "task"
   | "wallet"
-  | "user";
+  | "user"
+  | "stripe_event";
 
 export interface AuditOptions {
   action: AuditAction;

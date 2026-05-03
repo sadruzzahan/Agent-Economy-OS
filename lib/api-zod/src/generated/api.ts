@@ -23,7 +23,14 @@ export const GetMeResponse = zod.object({
   email: zod.string().nullish(),
   displayName: zod.string().nullish(),
   avatarUrl: zod.string().nullish(),
-  postingBalance: zod.number().describe("Simulated USD posting balance"),
+  postingBalance: zod
+    .number()
+    .describe(
+      "USD posting balance (decimal dollars on the wire; integer cents internally)",
+    ),
+  stripeConnectStatus: zod
+    .enum(["none", "pending", "verified", "restricted"])
+    .describe("Stripe Connect Express onboarding lifecycle for this user"),
   createdAt: zod.coerce.date(),
 });
 
@@ -671,38 +678,57 @@ export const ListMyWalletsResponse = zod.object({
 });
 
 /**
- * @summary Top up the user's posting balance (simulated dev mode)
+ * Returns a hosted Checkout URL the client must redirect to. The wallet credit happens asynchronously via the `checkout.session.completed` webhook — never trust the redirect alone.
+
+ * @summary Create a Stripe Checkout Session to top up the posting balance
  */
 
-export const TopUpBalanceBody = zod.object({
+export const CreateCheckoutSessionBody = zod.object({
+  amount: zod.number().min(1).describe("USD amount in decimal dollars"),
+});
+
+export const CreateCheckoutSessionResponse = zod.object({
+  sessionId: zod.string(),
+  url: zod.string().describe("Hosted Checkout URL the client redirects to"),
+  stub: zod.boolean().describe("True when running without a live Stripe key"),
+});
+
+/**
+ * @summary Request a Stripe payout from an agent wallet to the user's connected bank
+ */
+
+export const RequestPayoutBody = zod.object({
+  walletId: zod.number(),
   amount: zod.number().min(1),
 });
 
-export const TopUpBalanceResponse = zod.object({
-  userWallet: zod.object({
-    id: zod.number(),
-    kind: zod.enum(["user", "agent"]),
-    ownerUserId: zod.number().nullish(),
-    agentId: zod.number().nullish(),
-    agentName: zod.string().nullish(),
-    balance: zod.number(),
-    escrowed: zod.number(),
-    totalEarned: zod.number(),
-  }),
-  agentWallets: zod.array(
-    zod.object({
-      id: zod.number(),
-      kind: zod.enum(["user", "agent"]),
-      ownerUserId: zod.number().nullish(),
-      agentId: zod.number().nullish(),
-      agentName: zod.string().nullish(),
-      balance: zod.number(),
-      escrowed: zod.number(),
-      totalEarned: zod.number(),
-    }),
-  ),
-  totalBalance: zod.number(),
-  totalEscrowed: zod.number(),
+export const RequestPayoutResponse = zod.object({
+  payoutId: zod.string(),
+  status: zod.enum(["pending", "paid", "failed"]),
+  amount: zod.number(),
+  stub: zod.boolean(),
+});
+
+/**
+ * @summary Provision (or refresh) a Stripe Connect Express onboarding link
+ */
+export const StartConnectOnboardingResponse = zod.object({
+  accountId: zod.string(),
+  onboardingUrl: zod.string(),
+  expiresAt: zod.number(),
+  stub: zod.boolean(),
+});
+
+/**
+ * @summary Fresh Stripe Connect status for the current user
+ */
+export const GetConnectStatusResponse = zod.object({
+  accountId: zod.string().nullish(),
+  status: zod.enum(["none", "pending", "verified", "restricted"]),
+  chargesEnabled: zod.boolean(),
+  payoutsEnabled: zod.boolean(),
+  requirementsCurrentlyDue: zod.array(zod.string()),
+  stub: zod.boolean(),
 });
 
 /**
@@ -724,11 +750,20 @@ export const ListWalletTransactionsResponseItem = zod.object({
     "escrow_return",
     "credit",
     "debit",
+    "payout",
+    "refund",
+    "fee_adjust",
   ]),
   amount: zod.number(),
   balanceAfter: zod.number(),
   relatedTaskId: zod.number().nullish(),
   relatedTaskTitle: zod.string().nullish(),
+  externalStatus: zod
+    .string()
+    .nullish()
+    .describe(
+      "Lifecycle of the underlying Stripe object (pending, succeeded, failed, refunded)",
+    ),
   description: zod.string(),
   createdAt: zod.coerce.date(),
 });

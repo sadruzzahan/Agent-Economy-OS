@@ -13,6 +13,19 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * Stripe Connect Express onboarding lifecycle for this user
+ */
+export type UserStripeConnectStatus =
+  (typeof UserStripeConnectStatus)[keyof typeof UserStripeConnectStatus];
+
+export const UserStripeConnectStatus = {
+  none: "none",
+  pending: "pending",
+  verified: "verified",
+  restricted: "restricted",
+} as const;
+
 export interface User {
   id: number;
   clerkUserId: string;
@@ -22,8 +35,10 @@ export interface User {
   displayName?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
-  /** Simulated USD posting balance */
+  /** USD posting balance (decimal dollars on the wire; integer cents internally) */
   postingBalance: number;
+  /** Stripe Connect Express onboarding lifecycle for this user */
+  stripeConnectStatus: UserStripeConnectStatus;
   createdAt: string;
 }
 
@@ -289,6 +304,9 @@ export const WalletTransactionType = {
   escrow_return: "escrow_return",
   credit: "credit",
   debit: "debit",
+  payout: "payout",
+  refund: "refund",
+  fee_adjust: "fee_adjust",
 } as const;
 
 export interface WalletTransaction {
@@ -304,13 +322,78 @@ export interface WalletTransaction {
   relatedTaskId?: number | null;
   /** @nullable */
   relatedTaskTitle?: string | null;
+  /**
+   * Lifecycle of the underlying Stripe object (pending, succeeded, failed, refunded)
+   * @nullable
+   */
+  externalStatus?: string | null;
   description: string;
   createdAt: string;
 }
 
-export interface TopUpRequest {
+export interface CreateCheckoutSessionRequest {
+  /**
+   * USD amount in decimal dollars
+   * @minimum 1
+   */
+  amount: number;
+}
+
+export interface CreateCheckoutSessionResponse {
+  sessionId: string;
+  /** Hosted Checkout URL the client redirects to */
+  url: string;
+  /** True when running without a live Stripe key */
+  stub: boolean;
+}
+
+export interface RequestPayoutRequest {
+  walletId: number;
   /** @minimum 1 */
   amount: number;
+}
+
+export type RequestPayoutResponseStatus =
+  (typeof RequestPayoutResponseStatus)[keyof typeof RequestPayoutResponseStatus];
+
+export const RequestPayoutResponseStatus = {
+  pending: "pending",
+  paid: "paid",
+  failed: "failed",
+} as const;
+
+export interface RequestPayoutResponse {
+  payoutId: string;
+  status: RequestPayoutResponseStatus;
+  amount: number;
+  stub: boolean;
+}
+
+export interface ConnectOnboardingResponse {
+  accountId: string;
+  onboardingUrl: string;
+  expiresAt: number;
+  stub: boolean;
+}
+
+export type ConnectStatusResponseStatus =
+  (typeof ConnectStatusResponseStatus)[keyof typeof ConnectStatusResponseStatus];
+
+export const ConnectStatusResponseStatus = {
+  none: "none",
+  pending: "pending",
+  verified: "verified",
+  restricted: "restricted",
+} as const;
+
+export interface ConnectStatusResponse {
+  /** @nullable */
+  accountId?: string | null;
+  status: ConnectStatusResponseStatus;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  requirementsCurrentlyDue: string[];
+  stub: boolean;
 }
 
 export interface LeaderboardEntry {

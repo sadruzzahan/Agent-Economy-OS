@@ -24,8 +24,12 @@ import type {
   BadRequestResponse,
   Capability,
   Checkpoint,
+  ConnectOnboardingResponse,
+  ConnectStatusResponse,
   CreateAgentRequest,
   CreateAgentResponse,
+  CreateCheckoutSessionRequest,
+  CreateCheckoutSessionResponse,
   CreateSubTaskRequest,
   CreateTaskRequest,
   DashboardSummary,
@@ -44,6 +48,8 @@ import type {
   PaymentRequiredResponse,
   PlatformStats,
   ReputationHistoryPoint,
+  RequestPayoutRequest,
+  RequestPayoutResponse,
   ResolveDisputeRequest,
   Review,
   RotateAgentKeyRequest,
@@ -53,7 +59,6 @@ import type {
   SubmitTaskRequest,
   Task,
   TaskDetail,
-  TopUpRequest,
   UnauthorizedResponse,
   UpdateAgentRequest,
   User,
@@ -1689,42 +1694,47 @@ export function useListMyWallets<
 }
 
 /**
- * @summary Top up the user's posting balance (simulated dev mode)
+ * Returns a hosted Checkout URL the client must redirect to. The wallet credit happens asynchronously via the `checkout.session.completed` webhook — never trust the redirect alone.
+
+ * @summary Create a Stripe Checkout Session to top up the posting balance
  */
-export const getTopUpBalanceUrl = () => {
-  return `/api/wallets/topup`;
+export const getCreateCheckoutSessionUrl = () => {
+  return `/api/wallets/checkout`;
 };
 
-export const topUpBalance = async (
-  topUpRequest: TopUpRequest,
+export const createCheckoutSession = async (
+  createCheckoutSessionRequest: CreateCheckoutSessionRequest,
   options?: RequestInit,
-): Promise<WalletSummary> => {
-  return customFetch<WalletSummary>(getTopUpBalanceUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(topUpRequest),
-  });
+): Promise<CreateCheckoutSessionResponse> => {
+  return customFetch<CreateCheckoutSessionResponse>(
+    getCreateCheckoutSessionUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createCheckoutSessionRequest),
+    },
+  );
 };
 
-export const getTopUpBalanceMutationOptions = <
-  TError = ErrorType<UnauthorizedResponse>,
+export const getCreateCheckoutSessionMutationOptions = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof topUpBalance>>,
+    Awaited<ReturnType<typeof createCheckoutSession>>,
     TError,
-    { data: BodyType<TopUpRequest> },
+    { data: BodyType<CreateCheckoutSessionRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof topUpBalance>>,
+  Awaited<ReturnType<typeof createCheckoutSession>>,
   TError,
-  { data: BodyType<TopUpRequest> },
+  { data: BodyType<CreateCheckoutSessionRequest> },
   TContext
 > => {
-  const mutationKey = ["topUpBalance"];
+  const mutationKey = ["createCheckoutSession"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -1734,45 +1744,300 @@ export const getTopUpBalanceMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof topUpBalance>>,
-    { data: BodyType<TopUpRequest> }
+    Awaited<ReturnType<typeof createCheckoutSession>>,
+    { data: BodyType<CreateCheckoutSessionRequest> }
   > = (props) => {
     const { data } = props ?? {};
 
-    return topUpBalance(data, requestOptions);
+    return createCheckoutSession(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type TopUpBalanceMutationResult = NonNullable<
-  Awaited<ReturnType<typeof topUpBalance>>
+export type CreateCheckoutSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCheckoutSession>>
 >;
-export type TopUpBalanceMutationBody = BodyType<TopUpRequest>;
-export type TopUpBalanceMutationError = ErrorType<UnauthorizedResponse>;
+export type CreateCheckoutSessionMutationBody =
+  BodyType<CreateCheckoutSessionRequest>;
+export type CreateCheckoutSessionMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse
+>;
 
 /**
- * @summary Top up the user's posting balance (simulated dev mode)
+ * @summary Create a Stripe Checkout Session to top up the posting balance
  */
-export const useTopUpBalance = <
-  TError = ErrorType<UnauthorizedResponse>,
+export const useCreateCheckoutSession = <
+  TError = ErrorType<BadRequestResponse | UnauthorizedResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof topUpBalance>>,
+    Awaited<ReturnType<typeof createCheckoutSession>>,
     TError,
-    { data: BodyType<TopUpRequest> },
+    { data: BodyType<CreateCheckoutSessionRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof topUpBalance>>,
+  Awaited<ReturnType<typeof createCheckoutSession>>,
   TError,
-  { data: BodyType<TopUpRequest> },
+  { data: BodyType<CreateCheckoutSessionRequest> },
   TContext
 > => {
-  return useMutation(getTopUpBalanceMutationOptions(options));
+  return useMutation(getCreateCheckoutSessionMutationOptions(options));
 };
+
+/**
+ * @summary Request a Stripe payout from an agent wallet to the user's connected bank
+ */
+export const getRequestPayoutUrl = () => {
+  return `/api/wallets/payout`;
+};
+
+export const requestPayout = async (
+  requestPayoutRequest: RequestPayoutRequest,
+  options?: RequestInit,
+): Promise<RequestPayoutResponse> => {
+  return customFetch<RequestPayoutResponse>(getRequestPayoutUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(requestPayoutRequest),
+  });
+};
+
+export const getRequestPayoutMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | ForbiddenResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPayout>>,
+    TError,
+    { data: BodyType<RequestPayoutRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestPayout>>,
+  TError,
+  { data: BodyType<RequestPayoutRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestPayout"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestPayout>>,
+    { data: BodyType<RequestPayoutRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestPayout(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestPayoutMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestPayout>>
+>;
+export type RequestPayoutMutationBody = BodyType<RequestPayoutRequest>;
+export type RequestPayoutMutationError = ErrorType<
+  BadRequestResponse | UnauthorizedResponse | ForbiddenResponse
+>;
+
+/**
+ * @summary Request a Stripe payout from an agent wallet to the user's connected bank
+ */
+export const useRequestPayout = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorizedResponse | ForbiddenResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestPayout>>,
+    TError,
+    { data: BodyType<RequestPayoutRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestPayout>>,
+  TError,
+  { data: BodyType<RequestPayoutRequest> },
+  TContext
+> => {
+  return useMutation(getRequestPayoutMutationOptions(options));
+};
+
+/**
+ * @summary Provision (or refresh) a Stripe Connect Express onboarding link
+ */
+export const getStartConnectOnboardingUrl = () => {
+  return `/api/stripe/connect/onboard`;
+};
+
+export const startConnectOnboarding = async (
+  options?: RequestInit,
+): Promise<ConnectOnboardingResponse> => {
+  return customFetch<ConnectOnboardingResponse>(
+    getStartConnectOnboardingUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getStartConnectOnboardingMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startConnectOnboarding>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startConnectOnboarding>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["startConnectOnboarding"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startConnectOnboarding>>,
+    void
+  > = () => {
+    return startConnectOnboarding(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartConnectOnboardingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startConnectOnboarding>>
+>;
+
+export type StartConnectOnboardingMutationError =
+  ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Provision (or refresh) a Stripe Connect Express onboarding link
+ */
+export const useStartConnectOnboarding = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startConnectOnboarding>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startConnectOnboarding>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getStartConnectOnboardingMutationOptions(options));
+};
+
+/**
+ * @summary Fresh Stripe Connect status for the current user
+ */
+export const getGetConnectStatusUrl = () => {
+  return `/api/stripe/connect/status`;
+};
+
+export const getConnectStatus = async (
+  options?: RequestInit,
+): Promise<ConnectStatusResponse> => {
+  return customFetch<ConnectStatusResponse>(getGetConnectStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetConnectStatusQueryKey = () => {
+  return [`/api/stripe/connect/status`] as const;
+};
+
+export const getGetConnectStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getConnectStatus>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getConnectStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetConnectStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getConnectStatus>>
+  > = ({ signal }) => getConnectStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getConnectStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetConnectStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getConnectStatus>>
+>;
+export type GetConnectStatusQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Fresh Stripe Connect status for the current user
+ */
+
+export function useGetConnectStatus<
+  TData = Awaited<ReturnType<typeof getConnectStatus>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getConnectStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetConnectStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List wallet transactions for the current user (across personal + agents)

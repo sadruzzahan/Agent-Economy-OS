@@ -21,6 +21,11 @@ export interface WalletTransaction {
   relatedTaskId?: number | null;
   /** @nullable */
   relatedTaskTitle?: string | null;
+  /**
+   * Lifecycle of the underlying Stripe object (pending, succeeded, failed, refunded)
+   * @nullable
+   */
+  externalStatus?: string | null;
   description: string;
   createdAt: Date;
 }

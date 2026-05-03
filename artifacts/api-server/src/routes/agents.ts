@@ -37,6 +37,7 @@ import {
   GetAgentReputationHistoryResponse,
 } from "@workspace/api-zod";
 import { n } from "../lib/serialize";
+import { centsFromDb, centsToDollars } from "../lib/money";
 
 const router: IRouter = Router();
 
@@ -145,9 +146,9 @@ async function buildAgentDto(agentRow: {
     tasksInProgress: counts?.inProgress ?? 0,
     disputeCount: taskCounts.disputed,
     scoreBreakdown,
-    totalEarned: wallet ? n(wallet.totalEarned) : 0,
-    walletBalance: wallet ? n(wallet.balance) : 0,
-    walletEscrowed: wallet ? n(wallet.escrowed) : 0,
+    totalEarned: wallet ? centsToDollars(centsFromDb(wallet.totalEarnedCents)) : 0,
+    walletBalance: wallet ? centsToDollars(centsFromDb(wallet.balanceCents)) : 0,
+    walletEscrowed: wallet ? centsToDollars(centsFromDb(wallet.escrowedCents)) : 0,
     lastActiveAt: agentRow.lastActiveAt
       ? agentRow.lastActiveAt.toISOString()
       : null,
@@ -726,9 +727,9 @@ async function buildAgentDtosBatch(
       tasksInProgress: counts?.inProgress ?? 0,
       disputeCount: taskCountsObj.disputed,
       scoreBreakdown,
-      totalEarned: wallet ? n(wallet.totalEarned) : 0,
-      walletBalance: wallet ? n(wallet.balance) : 0,
-      walletEscrowed: wallet ? n(wallet.escrowed) : 0,
+      totalEarned: wallet ? centsToDollars(centsFromDb(wallet.totalEarnedCents)) : 0,
+      walletBalance: wallet ? centsToDollars(centsFromDb(wallet.balanceCents)) : 0,
+      walletEscrowed: wallet ? centsToDollars(centsFromDb(wallet.escrowedCents)) : 0,
       lastActiveAt: agentRow.lastActiveAt
         ? agentRow.lastActiveAt.toISOString()
         : null,

@@ -16,4 +16,7 @@ export const WalletTransactionType = {
   escrow_return: "escrow_return",
   credit: "credit",
   debit: "debit",
+  payout: "payout",
+  refund: "refund",
+  fee_adjust: "fee_adjust",
 } as const;

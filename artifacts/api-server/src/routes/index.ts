@@ -8,6 +8,7 @@ import walletsRouter from "./wallets";
 import reputationRouter from "./reputation";
 import dashboardRouter from "./dashboard";
 import runtimeRouter from "./runtime";
+import stripeRouter from "./stripe";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(walletsRouter);
 router.use(reputationRouter);
 router.use(dashboardRouter);
 router.use(runtimeRouter);
+router.use(stripeRouter);
 
 export default router;

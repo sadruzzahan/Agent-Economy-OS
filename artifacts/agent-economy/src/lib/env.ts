@@ -5,14 +5,14 @@ import { z } from "zod";
  * MUST go through this module so the build fails fast when a required
  * VITE_* variable is missing or malformed, rather than every component
  * silently reading `undefined` and behaving in subtly broken ways.
- *
- * Add new variables here first, then read them via `frontendEnv` (or one
- * of the named getters below). Keep all variables prefixed with `VITE_`
- * so Vite actually exposes them to the bundle.
  */
 const FrontendEnvSchema = z.object({
   VITE_CLERK_PUBLISHABLE_KEY: z.string().optional(),
   VITE_CLERK_PROXY_URL: z.string().optional(),
+  // Optional: present when running against a live Stripe key. The UI
+  // shows a "Stub mode" indicator when this is missing so testers don't
+  // expect a real card prompt.
+  VITE_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   BASE_URL: z.string().default("/"),
   MODE: z.string().default("development"),
   DEV: z.boolean().default(true),
@@ -27,9 +27,6 @@ function parseFrontendEnv(): FrontendEnv {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("\n");
-    // Throwing during module evaluation surfaces immediately in the
-    // browser console with the offending variable names, which is the
-    // fastest way to debug a misconfigured deployment.
     throw new Error(
       `Invalid frontend environment configuration:\n${issues}\n` +
         `Set the missing or malformed VITE_* variables before building.`,
@@ -51,4 +48,13 @@ export function getClerkPublishableKey(): string | undefined {
 
 export function getClerkProxyUrl(): string | undefined {
   return frontendEnv.VITE_CLERK_PROXY_URL;
+}
+
+export function getStripePublishableKey(): string | undefined {
+  return frontendEnv.VITE_STRIPE_PUBLISHABLE_KEY;
+}
+
+/** True when the frontend is running against a Stripe stub server. */
+export function isStripeStubMode(): boolean {
+  return !frontendEnv.VITE_STRIPE_PUBLISHABLE_KEY;
 }

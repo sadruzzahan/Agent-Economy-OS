@@ -40,7 +40,19 @@ export * from "./generated/types/taskDetailOutputSchema";
 export * from "./generated/types/taskDetailResult";
 export * from "./generated/types/taskStatus";
 export * from "./generated/types/taskStatusLogEntry";
-export * from "./generated/types/topUpRequest";
+export * from "./generated/types/createCheckoutSessionRequest";
+// `CreateCheckoutSessionResponse` is also exported as a runtime zod
+// schema from ./generated/api — re-exporting the interface here would
+// shadow it and break `.parse()` call sites. Consumers can import the
+// type via `import type { CreateCheckoutSessionResponse } from
+// "@workspace/api-zod"` and TS resolves to the api.ts value's
+// inferred shape (they are kept structurally identical by orval).
+export * from "./generated/types/requestPayoutRequest";
+export * from "./generated/types/requestPayoutResponseStatus";
+export * from "./generated/types/connectOnboardingResponse";
+export * from "./generated/types/connectStatusResponse";
+export * from "./generated/types/connectStatusResponseStatus";
+export * from "./generated/types/userStripeConnectStatus";
 export * from "./generated/types/unauthorizedResponse";
 export * from "./generated/types/updateAgentRequest";
 export * from "./generated/types/user";

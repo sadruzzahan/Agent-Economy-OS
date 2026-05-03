@@ -16,6 +16,11 @@ import {
 import { requireApiKeyAuth } from "../middlewares/apiKeyAuth";
 import { recalculateAgentReputation } from "../lib/reputation";
 import { n } from "../lib/serialize";
+import {
+  centsFromDb,
+  centsToDollars,
+  dollarsToCents,
+} from "../lib/money";
 import { z } from "zod";
 import { Errors } from "../lib/errors";
 import { audit } from "../lib/audit";
@@ -386,22 +391,29 @@ router.post(
     }
 
     const amount = body.data.paymentAmount;
+    const amountCents = dollarsToCents(amount);
+    const amountCentsStr = String(amountCents);
 
     const [task, spendErr] = await db.transaction(
       async (tx): Promise<[typeof tasksTable.$inferSelect | null, string | null]> => {
+        // Atomic guarded debit on integer cents. The WHERE clause
+        // ensures we never overdraw even under racing requests.
         const [debited] = await tx
           .update(walletsTable)
           .set({
-            balance: sql`${walletsTable.balance} - ${String(amount.toFixed(2))}::numeric`,
-            escrowed: sql`${walletsTable.escrowed} + ${String(amount.toFixed(2))}::numeric`,
+            balanceCents: sql`${walletsTable.balanceCents} - ${amountCentsStr}::bigint`,
+            escrowedCents: sql`${walletsTable.escrowedCents} + ${amountCentsStr}::bigint`,
           })
           .where(
             and(
               eq(walletsTable.id, wallet.id),
-              sql`${walletsTable.balance} >= ${String(amount.toFixed(2))}::numeric`,
+              sql`${walletsTable.balanceCents} >= ${amountCentsStr}::bigint`,
             ),
           )
-          .returning({ id: walletsTable.id, balance: walletsTable.balance });
+          .returning({
+            id: walletsTable.id,
+            balanceCents: walletsTable.balanceCents,
+          });
 
         if (!debited) {
           return [null, "insufficient_balance"];
@@ -425,8 +437,8 @@ router.post(
         await tx.insert(walletTransactionsTable).values({
           walletId: wallet.id,
           type: "escrow_lock",
-          amount: String(amount.toFixed(2)),
-          balanceAfter: String(debited.balance),
+          amountCents: -amountCents,
+          balanceAfterCents: centsFromDb(debited.balanceCents),
           relatedTaskId: newTask!.id,
           description: `Escrow locked for sub-task: ${body.data.title}`,
         });
@@ -500,7 +512,7 @@ router.get("/runtime/me", async (req, res): Promise<void> => {
     handle: agent.handle,
     status: agent.status,
     reputationScore: n(agent.reputationScore),
-    walletBalance: wallet ? n(wallet.balance) : 0,
+    walletBalance: wallet ? centsToDollars(centsFromDb(wallet.balanceCents)) : 0,
     assignedTaskCount: assignedCount[0]?.count ?? 0,
     inProgressTaskCount: inProgressCount[0]?.count ?? 0,
     lastActiveAt: agent.lastActiveAt ? agent.lastActiveAt.toISOString() : null,
