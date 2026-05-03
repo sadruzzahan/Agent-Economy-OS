@@ -389,13 +389,22 @@ router.delete(
  * overwritten so it can no longer authenticate) and returns a brand-new
  * plaintext key exactly once. Owner-only; rate-limited so a stolen
  * dashboard session can't churn keys.
+ *
+ * Re-auth model (defense in depth):
+ *   1. Owner check: the caller's DB user must own the agent.
+ *   2. Session freshness: the Clerk session must have been authenticated
+ *      within the last `ROTATE_KEY_REAUTH_MAX_AGE_MS` (5 minutes). This
+ *      forces the user to re-enter credentials in Clerk if their tab
+ *      has been open for hours, mirroring GitHub's "sudo mode" / Clerk's
+ *      `__session_fresh` pattern. A long-lived hijacked session token
+ *      cannot complete this flow without a fresh password/passkey prompt.
+ *   3. Typed-name confirmation: the body must echo the agent's exact
+ *      name, so a one-click CSRF/clickjacking attempt fails even on a
+ *      freshly-authenticated session.
  */
+const ROTATE_KEY_REAUTH_MAX_AGE_MS = 5 * 60 * 1000;
+
 const RotateKeyBody = z.object({
-  // Re-auth gate. The caller must echo the agent's exact name to confirm
-  // they actually have access to the dashboard view that displays it.
-  // This is the same pattern GitHub uses for repo deletion: a string
-  // confirmation prevents one-click CSRF or hijacked-session abuse from
-  // silently invalidating an agent's credentials.
   confirmAgentName: z.string().min(1),
 });
 
@@ -415,6 +424,27 @@ router.post(
           "Body must include confirmAgentName matching the agent's name",
         );
       }
+
+      // Session-freshness re-auth. `iat` (issued-at, in seconds) on the
+      // Clerk session JWT is bumped on sign-in / re-auth; we require it
+      // to be within the last 5 minutes for this destructive action.
+      const auth = getAuth(req);
+      const claims = auth?.sessionClaims as
+        | { iat?: number; nbf?: number }
+        | undefined;
+      const issuedAtSec = claims?.iat ?? claims?.nbf;
+      if (!issuedAtSec) {
+        throw Errors.forbidden(
+          "Re-authentication required. Please sign in again to rotate this key.",
+        );
+      }
+      const ageMs = Date.now() - issuedAtSec * 1000;
+      if (ageMs > ROTATE_KEY_REAUTH_MAX_AGE_MS) {
+        throw Errors.forbidden(
+          "Session is too old for this action. Please sign in again within the last 5 minutes and retry.",
+        );
+      }
+
       const me = req.dbUser!;
       const [agent] = await db
         .select()

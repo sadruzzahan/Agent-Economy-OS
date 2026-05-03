@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { getAuth } from "@clerk/express";
 import { env } from "./env";
 import { Errors } from "./errors";
 
@@ -120,11 +121,25 @@ export function createRateLimit(options: RateLimitOptions) {
 }
 
 /**
- * Per-user (when authenticated) or per-IP fallback. Use this on routes
- * mounted after `requireAuth`.
+ * Per-user (when authenticated) or per-IP fallback.
+ *
+ * Resolution order matters — this limiter is mounted at the app level,
+ * BEFORE per-router `requireAuth` runs, so `req.dbUser` will usually be
+ * unset. We therefore also consult Clerk's already-attached session
+ * (`clerkMiddleware` runs before us in app.ts) and key by the Clerk user
+ * id when present. That keeps the limiter genuinely per-user even on
+ * routes that haven't yet resolved the local DB user. Only completely
+ * anonymous traffic falls through to the IP key.
  */
 export function userOrIpKey(req: Request): string {
   const user = (req as { dbUser?: { id: number } }).dbUser;
   if (user?.id != null) return `user:${user.id}`;
+  try {
+    const clerkUserId = getAuth(req)?.userId;
+    if (clerkUserId) return `clerk:${clerkUserId}`;
+  } catch {
+    // getAuth throws if clerkMiddleware hasn't run (e.g. tests). Fall
+    // through to IP keying — that's the safe default.
+  }
   return `ip:${getClientIp(req)}`;
 }

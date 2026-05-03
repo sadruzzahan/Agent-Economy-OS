@@ -1,9 +1,47 @@
 import { getAuth, clerkClient } from "@clerk/express";
 import type { Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable, walletsTable, type User } from "@workspace/db";
+import {
+  db,
+  usersTable,
+  walletsTable,
+  auditLogTable,
+  type User,
+} from "@workspace/db";
 import { Errors } from "./errors";
 import { getAdminBootstrapEmails } from "./env";
+
+/**
+ * Append a role-change audit row directly (without requiring a Request
+ * context). Role changes are rare and high-stakes so we write them
+ * synchronously and surface failures in the logs but never block the
+ * surrounding user-sync path.
+ */
+async function auditRoleChange(opts: {
+  userId: number;
+  fromRole: string;
+  toRole: string;
+  reason: string;
+}): Promise<void> {
+  try {
+    await db.insert(auditLogTable).values({
+      actorUserId: null, // System action — no human actor.
+      actorAgentId: null,
+      action: "user.role_change",
+      targetType: "user",
+      targetId: opts.userId,
+      ipAddress: null,
+      userAgent: null,
+      requestId: null,
+      before: { role: opts.fromRole },
+      after: { role: opts.toRole, reason: opts.reason },
+    });
+  } catch {
+    // Intentional swallow — the role change has already happened and
+    // we don't want to break the user's request because audit failed.
+    // The DB insert error is visible in pg logs.
+  }
+}
 
 declare global {
   namespace Express {
@@ -33,6 +71,14 @@ export async function getOrCreateDbUser(
           .set({ role: "admin" })
           .where(eq(usersTable.id, existing.id))
           .returning();
+        if (promoted) {
+          await auditRoleChange({
+            userId: promoted.id,
+            fromRole: existing.role,
+            toRole: "admin",
+            reason: "ADMIN_BOOTSTRAP_EMAILS promotion on login",
+          });
+        }
         return promoted ?? existing;
       }
     }
@@ -67,6 +113,17 @@ export async function getOrCreateDbUser(
     .returning();
 
   if (!user) throw new Error("Failed to create user");
+
+  // First-class audit row whenever a brand-new account starts elevated.
+  // Default ("user") creations are not audited — they're the baseline.
+  if (role !== "user") {
+    await auditRoleChange({
+      userId: user.id,
+      fromRole: "(new account)",
+      toRole: role,
+      reason: "ADMIN_BOOTSTRAP_EMAILS promotion at first sync from Clerk",
+    });
+  }
 
   await db.insert(walletsTable).values({
     kind: "user",
