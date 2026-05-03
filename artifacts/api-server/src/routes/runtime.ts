@@ -340,16 +340,7 @@ router.post("/runtime/tasks", async (req, res): Promise<void> => {
     return;
   }
 
-  const balance = n(wallet.balance);
-  if (balance < body.data.paymentAmount) {
-    await logActivity(agent.id, "POST", ep, 402, clientIp(req));
-    res.status(402).json({
-      error: `Insufficient agent wallet balance. Available: $${balance.toFixed(2)}, required: $${body.data.paymentAmount.toFixed(2)}`,
-    });
-    return;
-  }
-
-  // We need a user owner for the task — use the agent's owner
+  // We need a user owner for the task — fetch before the transaction
   const [owner] = await db
     .select()
     .from(usersTable)
@@ -363,25 +354,27 @@ router.post("/runtime/tasks", async (req, res): Promise<void> => {
 
   const amount = body.data.paymentAmount;
 
-  const [task] = await db.transaction(async (tx) => {
-    // Deduct from agent wallet and escrow
-    const newBalance = balance - amount;
-    const newEscrowed = n(wallet.escrowed) + amount;
-    await tx
+  // Atomic guarded debit — uses a WHERE balance >= amount guard to prevent
+  // double-spend under concurrent requests (no optimistic locking needed).
+  const [task, spendErr] = await db.transaction(async (tx): Promise<[typeof tasksTable.$inferSelect | null, string | null]> => {
+    // Try to deduct atomically; if balance is insufficient the row won't update
+    const [debited] = await tx
       .update(walletsTable)
       .set({
-        balance: String(newBalance.toFixed(2)),
-        escrowed: String(newEscrowed.toFixed(2)),
+        balance: sql`${walletsTable.balance} - ${String(amount.toFixed(2))}::numeric`,
+        escrowed: sql`${walletsTable.escrowed} + ${String(amount.toFixed(2))}::numeric`,
       })
-      .where(eq(walletsTable.id, wallet.id));
+      .where(
+        and(
+          eq(walletsTable.id, wallet.id),
+          sql`${walletsTable.balance} >= ${String(amount.toFixed(2))}::numeric`,
+        ),
+      )
+      .returning({ id: walletsTable.id, balance: walletsTable.balance });
 
-    await tx.insert(walletTransactionsTable).values({
-      walletId: wallet.id,
-      type: "escrow_lock",
-      amount: String((-amount).toFixed(2)),
-      balanceAfter: String(newBalance.toFixed(2)),
-      description: `Escrow locked for sub-task: ${body.data.title}`,
-    });
+    if (!debited) {
+      return [null, "insufficient_balance"];
+    }
 
     const [newTask] = await tx
       .insert(tasksTable)
@@ -398,6 +391,15 @@ router.post("/runtime/tasks", async (req, res): Promise<void> => {
       })
       .returning();
 
+    await tx.insert(walletTransactionsTable).values({
+      walletId: wallet.id,
+      type: "escrow_lock",
+      amount: String((-amount).toFixed(2)),
+      balanceAfter: String(debited.balance),
+      relatedTaskId: newTask!.id,
+      description: `Escrow locked for sub-task: ${body.data.title}`,
+    });
+
     if (body.data.capabilityIds.length > 0) {
       await tx.insert(taskCapabilitiesTable).values(
         body.data.capabilityIds.map((cid) => ({ taskId: newTask!.id, capabilityId: cid })),
@@ -411,10 +413,18 @@ router.post("/runtime/tasks", async (req, res): Promise<void> => {
       note: `Sub-task posted by agent ${agent.name} via runtime API`,
     });
 
-    return [newTask!];
+    return [newTask!, null];
   });
 
-  const dto = await buildRuntimeTaskDto(task);
+  if (spendErr === "insufficient_balance") {
+    await logActivity(agent.id, "POST", ep, 402, clientIp(req));
+    res.status(402).json({
+      error: `Insufficient agent wallet balance. Required: $${amount.toFixed(2)}`,
+    });
+    return;
+  }
+
+  const dto = await buildRuntimeTaskDto(task!);
   await logActivity(agent.id, "POST", ep, 201, clientIp(req));
   res.status(201).json(dto);
 });
